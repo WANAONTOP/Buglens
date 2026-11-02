@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- BUGLENS FIXTURE: intentionally broken evaluation page (see fixtures/storefront/README.md).
+     The transparent #promo-overlay below blocks the Pay now button. -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Checkout — Storefront fixture</title>
+    <link rel="stylesheet" href="/site.css" />
+  </head>
+  <body>
+    <main class="checkout">
+      <h1>Checkout</h1>
+      <!-- buglens:order-summary (fixed deterministic data) -->
+      <section class="order" data-testid="order-summary" data-buglens="order-summary">
+        <div>BugLens T-Shirt &times; 1 — $20.00</div>
+        <div>Total: $20.00</div>
+      </section>
+      <!-- buglens:pay-button (reproduction target) -->
+      <button
+        id="pay-button"
+        type="button"
+        data-testid="pay-button"
+        data-buglens="pay-button"
+      >Pay now</button>
+      <!-- buglens:order-confirmation (expected success state) -->
+      <p
+        id="order-confirmation"
+        data-testid="order-confirmation"
+        data-buglens="order-confirmation"
+        data-paid="false"
+        hidden
+      ></p>
+    </main>
+    <!-- buglens:promo-overlay (INTENTIONAL BUG: transparent click interceptor) -->
+    <div id="promo-overlay" data-testid="promo-overlay" data-buglens="promo-overlay"></div>
+    <script>
+      document.getElementById('pay-button').addEventListener('click', () => {
+        const confirmation = document.getElementById('order-confirmation');
+        confirmation.textContent = 'Order confirmed: #BL-0001';
+        confirmation.dataset.paid = 'true';
+        confirmation.hidden = false;
+      });
+    </script>
+  </body>
+</html>

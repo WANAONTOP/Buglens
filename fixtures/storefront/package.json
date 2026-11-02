@@ -1,0 +1,14 @@
+{
+  "name": "buglens-storefront-fixture",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Intentionally broken evaluation fixture for BugLens AI (not a customer app).",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node reproduce.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}

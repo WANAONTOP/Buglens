@@ -1,0 +1,447 @@
+.page h1 {
+  font-size: 1.75rem;
+  margin: 0;
+}
+
+.subtitle {
+  margin: 0.25rem 0 1.5rem;
+}
+
+.status-card {
+  border: 1px solid #d8d8d8;
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.status-row h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot-checking {
+  background: #b98a00;
+}
+
+.dot-connected {
+  background: #1e7e34;
+}
+
+.dot-unreachable {
+  background: #b21e2b;
+}
+
+.status-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 1rem;
+  margin: 1rem 0;
+}
+
+.status-card dt {
+  font-weight: 600;
+}
+
+.status-card dd {
+  margin: 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.detail {
+  overflow-wrap: anywhere;
+}
+
+.detail code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.9rem;
+}
+
+.status-card button {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+/* --- M1 evidence intake --- */
+
+.card {
+  border: 1px solid #d8d8d8;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-top: 1.25rem;
+}
+
+.card h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+
+.card h3 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.card h4 {
+  font-size: 0.95rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.hint {
+  font-size: 0.9rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.error {
+  color: #b21e2b;
+  overflow-wrap: anywhere;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.label-title {
+  display: block;
+}
+
+.label-hint {
+  display: block;
+  font-weight: 400;
+  font-size: 0.82rem;
+}
+
+.form input,
+.form textarea,
+.token-form input,
+.pin-form input {
+  font: inherit;
+  font-weight: 400;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #b5b5b5;
+  border-radius: 4px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input-with-button input {
+  flex: 1;
+  min-width: 0;
+}
+
+.card button,
+.evidence-actions button,
+.file-pick {
+  font: inherit;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+}
+
+.token-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.token-form input {
+  flex: 1;
+  min-width: 0;
+}
+
+.incident-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.incident-item {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.incident-item.selected {
+  border-color: #1a1a1a;
+}
+
+.incident-title {
+  font-weight: 600;
+}
+
+.incident-meta {
+  font-size: 0.85rem;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.badge-blocked {
+  background: #f5e6c4;
+  color: #6b4e00;
+}
+
+.badge-intake_complete {
+  background: #d9ecd9;
+  color: #1e5e28;
+}
+
+.badge-local {
+  background: #e2e2e2;
+  color: #333;
+}
+
+.badge-uploaded {
+  background: #d4e4f5;
+  color: #174a7c;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.detail-header h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 0.35rem 1rem;
+  margin: 1rem 0;
+  font-size: 0.92rem;
+}
+
+.meta-grid dt {
+  font-weight: 600;
+}
+
+.meta-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.blocker-list,
+.steps-list {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.pin-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin: 0.5rem 0;
+}
+
+.pin-form label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.evidence-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.evidence-item {
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.evidence-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+span.evidence-name {
+  cursor: default;
+}
+
+.evidence-meta {
+  font-size: 0.85rem;
+}
+
+.evidence-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.capture-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.file-pick {
+  border: 1px solid #767676;
+  border-radius: 2px;
+  background: #f0f0f0;
+}
+
+.file-pick input {
+  display: none;
+}
+
+.recording-active {
+  font-weight: 600;
+}
+
+.rec-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #b21e2b;
+  margin-right: 0.4rem;
+}
+
+.preview-pane {
+  border: 1px dashed #b5b5b5;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.preview-pane h4 {
+  margin: 0;
+}
+
+.preview-pane img,
+.preview-pane video {
+  max-width: 100%;
+  max-height: 420px;
+  align-self: flex-start;
+}
+
+.preview-pane img.clickable {
+  cursor: crosshair;
+}
+
+.image-frame {
+  position: relative;
+  align-self: flex-start;
+  line-height: 0;
+}
+
+.click-marker {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 3px solid #b21e2b;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+}
+
+.click-marker.readonly {
+  border-color: #174a7c;
+}
+
+.preview-meta {
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.frame-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.video-clock {
+  font-family: ui-monospace, Consolas, monospace;
+}
+
+.progress {
+  position: relative;
+  display: block;
+  border: 1px solid #b5b5b5;
+  border-radius: 4px;
+  height: 1.6rem;
+  overflow: hidden;
+}
+
+.progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #d4e4f5;
+}
+
+.progress-label {
+  position: relative;
+  font-size: 0.85rem;
+  padding: 0.15rem 0.5rem;
+}

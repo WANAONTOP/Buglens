@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "workingDirectory": "fixtures/storefront",
+  "install": "npm install --prefix fixtures/storefront",
+  "start": "node server.js",
+  "port": 4103,
+  "route": "/checkout",
+  "controlRoute": "/checkout-control",
+  "viewport": { "width": 1280, "height": 800 },
+  "actions": [
+    { "action": "goto" },
+    { "action": "assertVisible", "selector": "[data-testid=\"pay-button\"]" },
+    { "action": "click", "selector": "[data-testid=\"pay-button\"]" },
+    { "action": "assertConfirmation" }
+  ],
+  "requiredElements": [
+    "[data-testid=\"pay-button\"]",
+    "[data-testid=\"order-confirmation\"]"
+  ],
+  "expectedConfirmation": {
+    "selector": "[data-testid=\"order-confirmation\"]",
+    "textContains": "Order confirmed"
+  },
+  "permittedPatchPaths": ["fixtures/storefront/public/"],
+  "protectedPaths": [
+    ".buglens.json",
+    "fixtures/storefront/reproduce.mjs",
+    "fixtures/storefront/server.js",
+    "fixtures/storefront/package.json",
+    "fixtures/storefront/package-lock.json",
+    "backend/app/guards.py",
+    "backend/tests/test_manifest.py"
+  ]
+}

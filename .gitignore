@@ -1,0 +1,38 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+frontend/dist/
+*.local
+
+# Private runtime artifacts (reproductions, uploads, model outputs, logs)
+uploads/
+recordings/
+artifacts/
+backend/data/
+fixtures/storefront/last-run.json
+*.log
+*.mp4
+*.webm
+*.png.bak
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
