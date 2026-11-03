@@ -87,6 +87,20 @@ PATCH_MAX_FILES = 5
 PATCH_MAX_CHANGED_LINES = 200
 PATCH_MAX_DIFF_BYTES = 64 * 1024
 
+# --- Step 8 seven-gate verification bounds --------------------------------------
+# Baseline + candidate checkouts each run the frozen driver (node sandbox)
+# and the pinned repo suite (python sandbox): four fresh sandboxes per
+# verification. Pixel policy values below are the defaults frozen into the
+# hashed verification policy before execution; candidate code cannot move
+# them afterwards.
+VERIFY_MAX_CONCURRENT = 1
+VERIFY_JOB_TIMEOUT_S = 1800.0
+VERIFY_SANDBOX_TIMEOUT_S = 900.0
+VERIFY_PYTEST_TIMEOUT_S = 600.0
+VERIFY_PIXEL_DIFF_FRACTION = 0.001
+VERIFY_PIXEL_CHANNEL_TOLERANCE = 8
+VERIFY_PYTHON_IMAGE = "python:3.13-slim"
+
 
 def get_api_token() -> str:
     """Application API token from the environment (there is no default)."""

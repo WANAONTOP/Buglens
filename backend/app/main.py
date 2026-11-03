@@ -8,6 +8,7 @@ from .routes_investigate import router as investigate_router
 from .routes_patches import router as patches_router
 from .routes_providers import router as providers_router
 from .routes_repro import router as repro_router
+from .routes_verify import router as verify_router
 
 # Local development: read backend-adjacent .env (repo-root .env when started
 # from the root). Real environment variables always take precedence, which is
@@ -30,6 +31,7 @@ app.include_router(providers_router)
 app.include_router(repro_router)
 app.include_router(investigate_router)
 app.include_router(patches_router)
+app.include_router(verify_router)
 
 
 @app.get("/health")

@@ -275,6 +275,35 @@ adding `style="pointer-events: none;"` to the overlay div so clicks
 reach the Pay button; 6 evidence refs, all 5 validation checks pass.
 Developer approval is pending.
 
+## Seven-gate verification (Step 8 — no PR publication)
+
+Verification runs only on a validly approved candidate: the worker
+re-checks state, approval record, diff hash, baseline pin, and contract
+agreement, and refuses stale or changed content. Each run freezes a
+hashed policy (viewport, pixel tolerances, required elements, expected
+confirmation, Gate 4 suite command), then drives the frozen reproduction
+on baseline and candidate checkouts in fresh node sandboxes and the
+pinned repo suite on both checkouts in fresh python sandboxes — four
+sandboxes, no credentials inside, working tree untouched. All seven
+gates must PASS for a `VERIFIED` outcome (limited to the tested scope);
+results persist with screenshots, traces, logs, and tested code hashes.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/candidates/{id}/verifications` | Start (202; approved only) |
+| GET | `/api/candidates/{id}/verifications` | List runs for a candidate |
+| GET | `/api/verifications/{vid}` | Full record: gates, outcome, provenance |
+| POST | `/api/verifications/{vid}/cancel` | Request cancellation |
+| GET | `/api/verifications/{vid}/artifacts/{name}/download` | Download evidence |
+
+The seven gates: reproduction, target correctness, layout/interaction,
+repo tests (same pinned suite both checkouts, no new failures),
+runtime errors, protected UI (before-click render unchanged — correct
+for an invisible repair), scope/integrity (tested bytes equal the
+approved diff). Status: live verification `1acefb6a…` of approved candidate
+`ecd72616…` returned `VERIFIED` — all seven gates passed on fresh
+Modal sandboxes (see NEW_WORK.md). No PR publication in this milestone.
+
 ## Configuration
 
 `.env` holds local secrets (see `.env.example`). Never commit it.

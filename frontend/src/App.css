@@ -297,6 +297,29 @@
   display: block;
 }
 
+.shot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.shot-grid figure {
+  margin: 0;
+}
+
+.shot-grid img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid #ddd;
+}
+
+.shot-grid figcaption {
+  font-size: 0.75rem;
+  color: #333;
+  margin-top: 0.25rem;
+}
+
 .detail-header {
   display: flex;
   align-items: center;

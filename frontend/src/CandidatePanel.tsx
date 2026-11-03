@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import VerifyPanel from './VerifyPanel'
 import { ApiError, api } from './api'
 import type {
   Candidate,
@@ -354,6 +355,8 @@ export default function CandidatePanel({ token, incident }: Props) {
                 Approval is disabled: the candidate did not pass validation.
               </p>
             )}
+
+          <VerifyPanel token={token} candidate={selected} />
         </div>
       )}
     </section>

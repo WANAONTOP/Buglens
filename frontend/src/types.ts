@@ -296,6 +296,71 @@ export interface CandidateSummary {
   updated_at: string
 }
 
+export type VerificationState = 'queued' | 'running' | 'done' | 'blocked' | 'error'
+
+export type GateVerdict = 'PASS' | 'FAIL' | 'BLOCKED'
+
+export type VerificationOutcome = 'VERIFIED' | 'NOT_VERIFIED' | 'BLOCKED'
+
+export interface GateResult {
+  gate: number
+  name: string
+  verdict: GateVerdict
+  detail: string
+  measurements: Record<string, unknown>
+  artifacts: string[]
+}
+
+export interface VerifyArtifact {
+  name: string
+  stored_filename: string
+  content_type: string
+  size_bytes: number
+  sha256: string
+}
+
+export interface Verification {
+  id: string
+  incident_id: string
+  run_id: string
+  investigation_id: string
+  candidate_id: string
+  repo: string
+  baseline_sha: string
+  contract_hash: string
+  policy_hash: string
+  approval: {
+    candidate_id: string
+    diff_sha256: string
+    approved_at: string
+  } | null
+  state: VerificationState
+  outcome: VerificationOutcome | null
+  detail: string
+  gates: GateResult[]
+  tested: {
+    diff_sha256: string
+    file_hashes: Record<string, string>
+    baseline_sha: string
+  } | null
+  artifacts: VerifyArtifact[]
+  events: InvestigationEvent[]
+  created_at: string
+  updated_at: string
+}
+
+export interface VerificationSummary {
+  id: string
+  incident_id: string
+  candidate_id: string
+  state: VerificationState
+  outcome: VerificationOutcome | null
+  detail: string
+  gates_passed: number
+  created_at: string
+  updated_at: string
+}
+
 export interface IncidentCreatePayload {
   title: string
   observed_behavior: string

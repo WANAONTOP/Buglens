@@ -158,6 +158,21 @@ Acceptance checks:
 - [x] Every candidate lists files changed; all within the approved set.
 - [x] Attempt count enforced (max three) with time/cost budget logged.
 
+## Step 8 — Seven-gate verification (M5, no PR)
+
+- Approval-gated execution across four fresh Modal sandboxes.
+- Trusted server-side gate decisions; persisted evidence + identity.
+- Frontend verify action with per-gate results and comparisons.
+
+Acceptance checks:
+
+- [x] Verifier, gates, policy freeze, and panel implemented.
+- [x] Mocked end-to-end run reaches VERIFIED; negatives covered.
+- [x] Live start on the unapproved candidate refused (409, no record).
+- [x] Backend suite (132) and frontend build pass.
+- [x] Live Modal verification after developer approval: VERIFIED.
+- [ ] PR creation (later milestone).
+
 ## M5 — Modal verification + PR
 
 - Run frozen repro + patch inside Modal; open GitHub PR only on pass.
@@ -165,6 +180,6 @@ Acceptance checks:
 
 Acceptance checks:
 
-- [ ] Modal run log attached to the run record.
+- [x] Modal run log attached to the run record.
 - [ ] PR created only after a passing verification; PR URL is the real API result.
 - [ ] Merge left to a human reviewer.

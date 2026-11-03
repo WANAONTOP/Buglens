@@ -9,6 +9,8 @@ import type {
   InvestigationSummary,
   ReproRun,
   ReproSummary,
+  Verification,
+  VerificationSummary,
 } from './types'
 
 export const BACKEND_URL = 'http://127.0.0.1:8000'
@@ -192,6 +194,42 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ note }),
     })
+  },
+
+  startVerification(token: string, candidateId: string): Promise<VerificationSummary> {
+    return request(token, `/api/candidates/${candidateId}/verifications`, { method: 'POST' })
+  },
+
+  listVerifications(token: string, candidateId: string): Promise<VerificationSummary[]> {
+    return request(token, `/api/candidates/${candidateId}/verifications`)
+  },
+
+  getVerification(token: string, verificationId: string): Promise<Verification> {
+    return request(token, `/api/verifications/${verificationId}`)
+  },
+
+  cancelVerification(token: string, verificationId: string): Promise<VerificationSummary> {
+    return request(token, `/api/verifications/${verificationId}/cancel`, { method: 'POST' })
+  },
+
+  async downloadVerifyArtifact(
+    token: string,
+    verificationId: string,
+    name: string,
+  ): Promise<Blob> {
+    let response: Response
+    try {
+      response = await fetch(
+        `${BACKEND_URL}/api/verifications/${verificationId}/artifacts/${encodeURIComponent(name)}/download`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+    } catch (err) {
+      throw new ApiError(0, err instanceof Error ? err.message : 'Network error')
+    }
+    if (!response.ok) {
+      throw new ApiError(response.status, await parseErrorBody(response))
+    }
+    return response.blob()
   },
 
   async downloadBlob(token: string, incidentId: string, evidenceId: string): Promise<Blob> {

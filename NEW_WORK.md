@@ -400,6 +400,96 @@ Verification results (2026-11-03):
 - No verification run and no PR in this milestone. Step 7 work is
   uncommitted.
 
+## Step 8 — seven-gate verification (2026-11-03, no PR)
+
+Checkpoint: Step 7 committed as `d4dcf79f5d0660ae91f1e2d3d423775417b35c55`
+(no amend, no push). Incident baseline preserved at
+`9174a4607269282babff247f04fe6418d0bcc8ac` throughout.
+
+Approval check: candidate `ecd72616…` is `proposed` with `approval:
+null` and an intact diff hash (`df74ab97…`, recomputed equal). No
+approval exists and none was fabricated — live Modal execution stays
+blocked; only the refusal path ran live.
+
+Changes (uncommitted):
+
+- `backend/app/verify/`: `policy.py` (frozen + hashed measurement
+  policy), `png.py` (dependency-free 8-bit RGB/RGBA decoder, filter
+  types 0-4, tolerance comparison with frozen exclusions),
+  `gates.py` (seven evaluators over untrusted reports; missing
+  evidence blocks), `runner.py` (approval recheck, patched-byte
+  computation from pinned blobs, two node sandbox checkouts +
+  two python suite sandboxes, artifact persistence, trusted
+  verdict), `store.py`/`jobs.py` (locked records, one worker,
+  reconcile-never-verified).
+- `backend/app/routes_verify.py` + `main.py`: start (approved-only,
+  409 otherwise), list/get/cancel, authenticated artifact downloads.
+- `backend/tests/test_verify.py`: 8 tests (PNG roundtrip/rejections,
+  policy determinism, all-pass gates, 8 fail modes, 5 blocked modes,
+  mocked 4-sandbox run to VERIFIED, refusal, endpoints, reconcile).
+- Frontend: `VerifyPanel.tsx` (verify action gated on approval,
+  progress polling, per-gate results, before/after shot comparison,
+  evidence downloads) wired into the candidate view; API client +
+  types; shot-grid CSS. No PR creation.
+
+Verification results (2026-11-03):
+
+- `pytest backend\tests`: 132 passed. `npm run build`: success.
+- Mocked end-to-end verification reaches `VERIFIED` (7/7 PASS, 4
+  sandboxes created + terminated, policy + 20 artifacts persisted).
+- Live refusal demo on the real backend: candidate still
+  proposed/approval null → POST verify returns 409, zero
+  verification records created, zero Modal spend.
+- Gate 4 design note: the pinned target tree's independent suite is
+  the repo's backend pytest suite at the SHA (the fixture ships no
+  separate unit suite; the frozen harness stays Gate 1's). Both
+  checkouts execute it identically; only NEW candidate failures fail.
+- Environment note: port 8000 was held by a stale pre-Step-8 project
+  backend (left untouched); live checks ran on 8001, freed after.
+- Step 8 work is uncommitted. Stopped before PR creation.
+
+## Step 8 live verification (2026-11-03)
+
+Developer approved candidate `ecd72616…` for isolated verification
+only (via the authenticated approve endpoint from the chat session —
+not a UI click; no PR/push/merge authorized). Pre-approval check
+passed: diff exactly the reported one-line `pointer-events: none`
+overlay change, hash `df74ab97…` recomputed equal, validation ok,
+baseline `9174a46…`.
+
+First live run `092dfda5…` BLOCKED honestly: candidate overlay `cp`
+used the volume path `/overlay/…` instead of the sandbox mount
+`/buglens/overlay/…`, so the copy failed. Diagnosed with a Modal
+probe (nested volume uploads work; the mount prefix was wrong),
+fixed `verify/runner.py` (mount path + split copy/hash errors),
+added a regression test asserting cp sources resolve under the
+mount. Failed run preserved untouched.
+
+Second live run `1acefb6a…` (same approval, candidate/policy
+unchanged): `done/VERIFIED` in ~9 minutes across 4 fresh sandboxes
+(all terminated; 20 artifacts persisted; policy `c6091fe4…`).
+
+- Gate 1 reproduction PASS: 9/9 — baseline fails blocked (present,
+  intercepted, unclicked, unconfirmed), candidate clicked + confirmed
+  with matching text, both controls ok.
+- Gate 2 target PASS: button present/visible, no missing elements,
+  candidate before/after differ 0.54% (confirmation appeared),
+  baseline before/after identical.
+- Gate 3 layout PASS: button rect (360,189,106x44) inside 1280x800,
+  center hits, control intact.
+- Gate 4 repo tests PASS: 93 collected both checkouts; 2 failures
+  each, identical pre-existing set (a Windows-path test and an
+  app-auth status test under Linux), 0 new failures.
+- Gate 5 runtime errors PASS: no errors either side.
+- Gate 6 protected UI PASS: 0/1024000 before-click pixels differ.
+- Gate 7 scope PASS: tested bytes equal the approved diff
+  (`checkout.html` → `1b94313c…`).
+
+Tested identity: diff `df74ab97…` at baseline `9174a46…`, contract
+`67f33335f015…`. Backend suite re-run after the fix: 132 passed.
+No patch regenerated, no PR published; working tree untouched
+(candidate bytes only entered Modal sandboxes).
+
 ## Later steps
 
 Append one section per milestone with files touched and verification results.
