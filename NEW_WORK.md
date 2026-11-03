@@ -177,6 +177,44 @@ Verification results (2026-11-03):
   verified while inference capability stays untested (optional).
 - `pytest backend\tests`: 86 passed. `npm run build`: success. UI unchanged.
 
+## Step 4 — committed reproduction target (2026-11-03)
+
+Baseline status: committed locally as `817a897e`; publication to
+`WANAONTOP/Buglens` is pending until a push is actually confirmed. Local
+reproduction succeeded as an evaluation: broken route `FAIL_BLOCKED`,
+control route `PASS`. The overlay bug has not been repaired.
+
+Changes:
+
+- `fixtures/storefront/`: dependency-free Node server, `checkout.html`
+  (transparent `#promo-overlay` blocks `#pay-button`), `checkout-control.html`
+  (no overlay), `site.css` (annotated bug site), `reproduce.mjs`
+  (Playwright matrix with PASS/FAIL_BLOCKED/FAIL_SETUP verdicts and
+  `elementFromPoint` occlusion evidence), fixture README. Playwright 1.64.1
+  pinned; run here via Edge channel (`PLAYWRIGHT_CHANNEL=msedge`).
+- `.buglens.json`: workdir, install/start (opaque, never backend-executed),
+  port 4103, both routes, viewport, actions, confirmation, required
+  elements, permitted `public/` only, protected harness/manifest/verifier.
+- `backend/app/manifest.py` + `backend/tests/test_manifest.py`: schema,
+  traversal/overlap/self-protection enforcement, repo-consistency check.
+- SAM correction: parser still accepts empty output, but the smoke over
+  the known red square now fails without expected geometry (new test).
+- Git: repo initialized on `main`, remote `origin` set to
+  `https://github.com/WANAONTOP/Buglens.git` (none existed), 58 reviewed
+  files staged explicitly, secret scan clean (6 hits, all known fake test
+  constants), initial commit `817a897e` created locally. NOT pushed.
+
+Verification results (2026-11-03):
+
+- `node reproduce.mjs`: broken `FAIL_BLOCKED` (top element
+  `div#promo-overlay` at button center), control `PASS`
+  (`Order confirmed: #BL-0001`), matrix exit 0.
+- Negative probe (port squatted by a stub): `FAIL_SETUP` with a clear
+  reason, matrix exit 1 — never mistaken for the blocked-click failure.
+- `pytest backend\tests`: 93 passed. `npm run build`: success.
+- Follow-up: Step 4 documentation committed separately from the initial
+  source commit, which is preserved as-is (no amend, no force-push).
+
 ## Later steps
 
 Append one section per milestone with files touched and verification results.

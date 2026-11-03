@@ -61,6 +61,28 @@ Acceptance checks:
 - [x] Baseten listing verified and labeled listing-only; inference untested.
 - [x] Missing-config and provider-error tests pass; no repo code run, no PRs.
 
+## Step 4 — committed reproduction target
+
+- Owned `fixtures/storefront/` app: overlay-blocked `/checkout`, working
+  `/checkout-control`, deterministic data, documented as a fixture.
+- `.buglens.json` contract + backend validator; permitted paths confined
+  to fixture source; manifest/harness/verifier protected.
+- Playwright matrix: broken must `FAIL_BLOCKED` (occlusion evidence),
+  control must `PASS`; setup failures report `FAIL_SETUP`.
+- SAM smoke requires the expected red-square geometry (zero matches fails).
+- Baseline committed locally; publication to `WANAONTOP/Buglens` is pending
+  until a push is actually confirmed (no auto-push, no PRs).
+- The overlay bug is not repaired in this milestone.
+
+Acceptance checks:
+
+- [x] Fixture runs locally; broken `FAIL_BLOCKED`, control `PASS` observed.
+- [x] Negative probe: dead server reports `FAIL_SETUP`, not `FAIL_BLOCKED`.
+- [x] Manifest validates; traversal/overlap/self-protection enforced.
+- [x] Backend suite (93) and frontend build pass; SAM geometry test added.
+- [x] Secret scan clean (6 known fake-fixture hits reviewed); initial commit
+  created locally, push left to the user.
+
 ## M2 — Visual interpretation
 
 - muse-spark-1.3 describes the bug; sam-3.1 segments UI regions.

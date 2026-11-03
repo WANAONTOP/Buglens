@@ -162,6 +162,31 @@ Setup per provider:
 - Baseten (optional): `BASETEN_API_KEY`. Smoke lists models, which proves
   listing access only — inference capability stays untested and optional.
 
+## Reproduction target (Step 4)
+
+`fixtures/storefront/` is an owned, intentionally broken evaluation app —
+not a customer incident. `/checkout` has a transparent overlay blocking
+the Pay now button; `/checkout-control` is the working oracle.
+
+```powershell
+# From the repository root D:\buglens-ai
+cd fixtures\storefront
+npm install
+$env:PLAYWRIGHT_CHANNEL = 'msedge'  # or install a Playwright browser instead
+node reproduce.mjs
+```
+
+App URL during checks: http://127.0.0.1:4103/checkout (control:
+`/checkout-control`). Expected matrix: broken route `FAIL_BLOCKED` with
+occlusion evidence, control route `PASS` with `Order confirmed: #BL-0001`.
+Server/element problems report `FAIL_SETUP`, never `FAIL_BLOCKED`.
+
+The reproduction contract is the repo-root `.buglens.json` (validated by
+`backend/app/manifest.py`; never executed by backend code — repository
+commands will run only inside the Modal sandbox). The fixture runner is
+separate from the BugLens app test suite: `pytest backend\tests` must stay
+green regardless of the fixture's expected failure.
+
 ## Configuration
 
 `.env` holds local secrets (see `.env.example`). Never commit it.
@@ -175,3 +200,5 @@ Setup per provider:
 - `AGENTS.md` — binding engineering rules.
 - `PLAN.md` — milestones and acceptance checks.
 - `NEW_WORK.md` — record of existing foundations and new work.
+- `fixtures/storefront/` — owned broken evaluation app + Playwright repro.
+- `.buglens.json` — reproduction contract (validated, never auto-executed).
