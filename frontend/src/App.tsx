@@ -351,6 +351,7 @@ function App() {
             {loading && !selected && <p className="hint">Loading report…</p>}
             {selected && (
               <IncidentDetail
+                key={selected.id}
                 token={token}
                 incident={selected}
                 onChanged={handleChanged}

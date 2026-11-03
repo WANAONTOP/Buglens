@@ -1036,6 +1036,12 @@ button.evidence-name:hover:not(:disabled) {
   color: var(--muted);
 }
 
+.item-status {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .evidence-actions {
   display: flex;
   flex-wrap: wrap;

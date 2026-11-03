@@ -39,6 +39,7 @@ export default function NewReportWizard({ token, onSaved, onClose }: Props) {
   const [pendingCount, setPendingCount] = useState(0)
 
   const pendingRef = useRef<LocalItem[]>([])
+  const savingRef = useRef(false)
   const handlePendingChange = useCallback((items: LocalItem[]) => {
     pendingRef.current = items
     setPendingCount(items.length)
@@ -87,6 +88,10 @@ export default function NewReportWizard({ token, onSaved, onClose }: Props) {
   }
 
   async function handleSave(): Promise<void> {
+    // Ref guard: the disabled-button state update is async, so a fast
+    // double-click could otherwise create two incidents.
+    if (savingRef.current) return
+    savingRef.current = true
     setSaving(true)
     setError(null)
     setStatus('Creating report…')
@@ -113,6 +118,7 @@ export default function NewReportWizard({ token, onSaved, onClose }: Props) {
       )
       setSaving(false)
       setStatus(null)
+      savingRef.current = false
       return
     }
 

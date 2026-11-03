@@ -342,20 +342,31 @@ export function uploadEvidence(
   incidentId: string,
   form: FormData,
   onProgress: (percent: number | null) => void,
+  opts?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<Evidence> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${BACKEND_URL}/api/incidents/${incidentId}/evidence`)
     xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    // A hung request must surface instead of spinning forever: the server
+    // answers uploads in milliseconds, so a 120s ceiling only trips on real stalls.
+    xhr.timeout = opts?.timeoutMs ?? 120_000
+    const onAbortSignal = () => xhr.abort()
+    opts?.signal?.addEventListener('abort', onAbortSignal, { once: true })
+    const settle = (fn: () => void) => {
+      opts?.signal?.removeEventListener('abort', onAbortSignal)
+      fn()
+    }
     xhr.upload.onprogress = (event) => {
       onProgress(event.lengthComputable ? Math.round((event.loaded / event.total) * 100) : null)
     }
     xhr.onload = () => {
       if (xhr.status === 201) {
         try {
-          resolve(JSON.parse(xhr.responseText) as Evidence)
+          const evidence = JSON.parse(xhr.responseText) as Evidence
+          settle(() => resolve(evidence))
         } catch {
-          reject(new ApiError(xhr.status, 'Upload succeeded but the response was unreadable.'))
+          settle(() => reject(new ApiError(xhr.status, 'Upload succeeded but the response was unreadable.')))
         }
         return
       }
@@ -366,10 +377,13 @@ export function uploadEvidence(
       } catch {
         // keep the generic message
       }
-      reject(new ApiError(xhr.status, message))
+      if (xhr.status === 401 || xhr.status === 403) notifyUnauthorized()
+      settle(() => reject(new ApiError(xhr.status, message)))
     }
-    xhr.onerror = () => reject(new ApiError(0, 'Network error during upload.'))
-    xhr.onabort = () => reject(new ApiError(0, 'Upload cancelled.'))
+    xhr.onerror = () => settle(() => reject(new ApiError(0, 'Network error during upload.')))
+    xhr.ontimeout = () =>
+      settle(() => reject(new ApiError(0, 'Upload timed out waiting for the server.')))
+    xhr.onabort = () => settle(() => reject(new ApiError(0, 'Upload cancelled.')))
     onProgress(0)
     xhr.send(form)
   })

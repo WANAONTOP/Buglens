@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Disclosure } from './Progressive'
-import { ApiError, api, formatBytes, formatTimestampMs, uploadEvidence } from './api'
+import { ApiError, BACKEND_URL, api, formatBytes, formatTimestampMs, uploadEvidence } from './api'
 import type { Evidence, EvidenceKind } from './types'
 
 export interface LocalItem {
@@ -27,6 +27,7 @@ export async function uploadLocalItem(
   incidentId: string,
   item: LocalItem,
   onProgress: (percent: number | null) => void,
+  opts?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<Evidence> {
   const form = new FormData()
   const fallbackType = item.kind === 'video' ? 'video/webm' : 'image/png'
@@ -43,7 +44,7 @@ export async function uploadLocalItem(
     form.append('client_height', String(item.height))
   }
   if (item.durationMs !== null) form.append('client_duration_ms', String(item.durationMs))
-  return uploadEvidence(token, incidentId, form, onProgress)
+  return uploadEvidence(token, incidentId, form, onProgress, opts)
 }
 
 interface Props {
@@ -144,6 +145,8 @@ export default function EvidenceCapture({
   const [recording, setRecording] = useState<ActiveRecording | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
   const [recorderError, setRecorderError] = useState<string | null>(null)
+  const [finalizing, setFinalizing] = useState(false)
+  const [lastUploaded, setLastUploaded] = useState<string | null>(null)
   const [videoClock, setVideoClock] = useState('0:00.000')
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -151,6 +154,7 @@ export default function EvidenceCapture({
   const recordingRef = useRef<ActiveRecording | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const discardRef = useRef(false)
+  const uploadControllers = useRef(new Map<string, AbortController>())
 
   recordingRef.current = recording
 
@@ -330,6 +334,7 @@ export default function EvidenceCapture({
       const discard = discardRef.current
       discardRef.current = false
       setRecording(null)
+      setFinalizing(false)
       if (discard) return
       const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'video/webm' })
       if (blob.size === 0) {
@@ -342,7 +347,10 @@ export default function EvidenceCapture({
     const [track] = stream.getVideoTracks()
     // The browser's own "Stop sharing" button ends the track directly.
     track?.addEventListener('ended', () => {
-      if (recorder.state !== 'inactive') recorder.stop()
+      if (recorder.state !== 'inactive') {
+        setFinalizing(true)
+        recorder.stop()
+      }
     })
     recorder.start()
     setRecording({ stream, recorder, startedAt: Date.now() })
@@ -351,6 +359,7 @@ export default function EvidenceCapture({
   function stopRecording(): void {
     const active = recordingRef.current
     if (active && active.recorder.state !== 'inactive') {
+      setFinalizing(true)
       active.recorder.stop()
     }
   }
@@ -365,6 +374,7 @@ export default function EvidenceCapture({
       stopTracks(active.stream)
       discardRef.current = false
       setRecording(null)
+      setFinalizing(false)
     }
   }
 
@@ -376,22 +386,49 @@ export default function EvidenceCapture({
 
   async function uploadItem(item: LocalItem): Promise<void> {
     if (incidentId === null) return
+    const controller = new AbortController()
+    uploadControllers.current.set(item.uid, controller)
     patchItem(item.uid, { uploading: true, progress: 0, error: null })
     try {
       await uploadLocalItem(token, incidentId, item, (percent) =>
         patchItem(item.uid, { progress: percent }),
+        { timeoutMs: 120_000, signal: controller.signal },
       )
       untrackUrl(item.url)
       setItems((prev) => prev.filter((candidate) => candidate.uid !== item.uid))
       setPreview((current) => (current?.type === 'local' && current.uid === item.uid ? null : current))
+      // Shown only after the server confirms with 201: the item moves to the
+      // uploaded list on the refresh below.
+      setLastUploaded(`✓ “${item.name}” uploaded to the backend.`)
       onChanged()
     } catch (err) {
-      patchItem(item.uid, {
-        uploading: false,
-        progress: null,
-        error: err instanceof ApiError ? `Upload failed (${err.status}): ${err.message}` : String(err),
-      })
+      if (controller.signal.aborted) {
+        patchItem(item.uid, {
+          uploading: false,
+          progress: null,
+          error: 'Upload cancelled. The file is kept below — Upload to retry.',
+        })
+      } else {
+        const message =
+          err instanceof ApiError
+            ? `Upload failed (${err.status}): ${err.message}${err.status === 0 ? ` Could not reach ${BACKEND_URL}.` : ''} The file is kept below — Upload to retry.`
+            : String(err)
+        patchItem(item.uid, { uploading: false, progress: null, error: message })
+      }
+    } finally {
+      uploadControllers.current.delete(item.uid)
     }
+  }
+
+  function cancelUpload(uid: string): void {
+    uploadControllers.current.get(uid)?.abort()
+  }
+
+  function itemStatus(item: LocalItem): string {
+    if (item.uploading) return 'Uploading…'
+    if (item.error) return 'Needs attention — see the error below.'
+    if (item.width === null || item.height === null) return 'Preparing…'
+    return incidentId === null ? 'Ready — uploads when you save.' : 'Ready to upload.'
   }
 
   function handleScreenshotClick(event: React.MouseEvent<HTMLImageElement>, item: LocalItem): void {
@@ -627,6 +664,16 @@ export default function EvidenceCapture({
       {recording && (
         <p className="hint">Recording… use the browser&apos;s sharing picker, then Stop here or in the browser chrome.</p>
       )}
+      {finalizing && (
+        <p className="hint" role="status">
+          Finalizing recording…
+        </p>
+      )}
+      {lastUploaded && (
+        <p className="hint" role="status">
+          {lastUploaded}
+        </p>
+      )}
 
       {compact ? (
         <h4>Attachments{items.length > 0 && ` (${items.length})`}</h4>
@@ -654,17 +701,27 @@ export default function EvidenceCapture({
                 {item.timestampMs !== null && ` · @ ${formatTimestampMs(item.timestampMs)}`}
                 {item.click && ` · click @ ${item.click.x},${item.click.y}`}
               </span>
+              <span className="item-status" role="status">
+                {itemStatus(item)}
+              </span>
               {item.uploading ? (
-                <span className="progress">
-                  <span
-                    className="progress-bar"
-                    style={{ width: `${item.progress ?? 0}%` }}
-                    aria-hidden="true"
-                  />
-                  <span className="progress-label">
-                    {item.progress === null ? 'Uploading…' : `${item.progress}%`}
+                <>
+                  <span className="progress">
+                    <span
+                      className="progress-bar"
+                      style={{ width: `${item.progress ?? 0}%` }}
+                      aria-hidden="true"
+                    />
+                    <span className="progress-label">
+                      {item.progress === null ? 'Uploading…' : `${item.progress}%`}
+                    </span>
                   </span>
-                </span>
+                  <span className="evidence-actions">
+                    <button type="button" onClick={() => cancelUpload(item.uid)}>
+                      Cancel upload
+                    </button>
+                  </span>
+                </>
               ) : incidentId === null ? (
                 <span className="evidence-actions">
                   <button type="button" onClick={() => removeItem(item)}>
