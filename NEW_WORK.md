@@ -353,6 +353,53 @@ Verification results (2026-11-03):
   run events + traces).
 - No patches generated or applied. Step 6 work is uncommitted.
 
+## Step 7 — scoped candidate generation + review (2026-11-03)
+
+Checkpoint: Step 6 committed as `fb8a482912afad935a1cd525c09a9d2032aca4fb`
+(no amend, no push). Incident baseline preserved at
+`9174a4607269282babff247f04fe6418d0bcc8ac` throughout.
+
+Changes (uncommitted):
+
+- `backend/app/patches/`: `context.py` (chain verification + pinned
+  source collection), `generate.py` (Wonder prompt with contract,
+  hypothesis, evidence, excerpts, allowed/protected lists; defensive
+  JSON parse), `validate.py` (structural unified-diff validation:
+  canonical paths, manifest scope, protected + harness backstop,
+  symlink/baseline presence, size bounds, strict in-memory apply),
+  `runner.py`, `store.py`/`jobs.py` (locked records, one worker).
+- `backend/app/routes_patches.py` + `main.py`: start/list/get/
+  approve/reject/cancel (app-authenticated; 3-candidate budget;
+  approval re-verifies the diff hash binding).
+- `backend/tests/test_patches.py`: 8 mocked tests (parser matrix,
+  scope/protected/traversal/symlink/baseline/bounds, full pipeline,
+  prereq drift, budget, approve/reject/stale/tamper, persistence).
+- Frontend: `CandidatePanel.tsx` (investigation + hypothesis picker,
+  generation polling, rendered diff, validation list, Approve/Reject),
+  API client + types, diff CSS. No FIXED/PATCHED/VERIFIED vocabulary.
+- `config.py`: patch bounds; Wonder cap 4096 (measured — see below).
+
+Verification results (2026-11-03):
+
+- `pytest backend\tests`: 124 passed. `npm run build`: success.
+- Live candidate on investigation `bbe7be7e…` (rank 1): `ecd72616…`
+  `PROPOSED` at baseline `9174a46…` — 1 file
+  (`fixtures/storefront/public/checkout.html`), 2 changed lines:
+  `style="pointer-events: none;"` added to the overlay div. Evidence
+  E7/E8/E9/E11/E20/E22; expected effect names the button click and
+  `Order confirmed`; 1 regression risk; usage 2768 output tokens.
+  All 5 validation checks pass. Approval pending (not fabricated).
+- First live attempt blocked honestly (cap 2400 → `incomplete`, 0
+  chars); the measured fix (4096; observed 2747 output tokens incl.
+  2349 reasoning) succeeded. A later harness-side transport error
+  ("error sending request", reqwest phrasing, absent from BugLens
+  code) was diagnosed as the agent tool's own connection failure,
+  not a Wonder adapter defect; recovery verified the backend
+  healthy, one terminal blocked record, no active job, then made
+  exactly one new bounded attempt.
+- No verification run and no PR in this milestone. Step 7 work is
+  uncommitted.
+
 ## Later steps
 
 Append one section per milestone with files touched and verification results.

@@ -243,6 +243,38 @@ names the transparent full-viewport interceptor with 11 supporting
 evidence refs and zero unvalidated citations. No status claims PATCHED,
 FIXED, or VERIFIED.
 
+## Candidate patches (Step 7 — generation + review, no verification)
+
+A candidate is generated from a completed, parsed investigation: the
+incident/run/investigation chain must agree on the SHA and contract,
+sources are fetched at the pinned commit, and `muse-wonder-1.0` returns
+one minimal unified diff with explanations, evidence refs, expected
+effect, and regression risks. Every diff is validated structurally
+against the pinned baseline (canonical paths, manifest scope, protected
+exclusions, no renames/deletes/mode/binary changes, size bounds, strict
+in-memory apply) before it can be proposed. A proposed patch is not a
+verified fix. At most three candidates per incident.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/incidents/{id}/candidates` | Generate (202; body `{"investigation_id", "hypothesis_rank?"}`) |
+| GET | `/api/incidents/{id}/candidates` | List candidates for an incident |
+| GET | `/api/candidates/{candidate_id}` | Full record: diff, validation, provenance |
+| POST | `/api/candidates/{candidate_id}/approve` | Approve, bound to the exact diff hash |
+| POST | `/api/candidates/{candidate_id}/reject` | Reject with a reason |
+| POST | `/api/candidates/{candidate_id}/cancel` | Cancel a running generation |
+
+States are `PROPOSED`, `APPROVED`, `REJECTED`, or `BLOCKED`. Approval
+binds the candidate ID to the diff SHA-256 and re-verifies the binding;
+any change to the diff invalidates it. Approval authorizes a later
+verification run; it is not verification.
+
+Live result on investigation `bbe7be7e…`: candidate `ecd72616…`
+`PROPOSED` — one file, `fixtures/storefront/public/checkout.html`,
+adding `style="pointer-events: none;"` to the overlay div so clicks
+reach the Pay button; 6 evidence refs, all 5 validation checks pass.
+Developer approval is pending.
+
 ## Configuration
 
 `.env` holds local secrets (see `.env.example`). Never commit it.

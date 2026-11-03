@@ -222,6 +222,80 @@ export interface InvestigationSummary {
   updated_at: string
 }
 
+export type CandidateState =
+  | 'queued'
+  | 'generating'
+  | 'proposed'
+  | 'approved'
+  | 'rejected'
+  | 'blocked'
+  | 'error'
+
+export interface ValidationCheck {
+  name: string
+  ok: boolean
+  detail: string
+}
+
+export interface ValidationResult {
+  ok: boolean
+  checks: ValidationCheck[]
+  reasons: string[]
+}
+
+export interface ChangeExplanation {
+  path: string
+  explanation: string
+}
+
+export interface Approval {
+  candidate_id: string
+  diff_sha256: string
+  approved_at: string
+  note: string
+}
+
+export interface Candidate {
+  id: string
+  incident_id: string
+  run_id: string
+  investigation_id: string
+  hypothesis_rank: number
+  repo: string
+  baseline_sha: string
+  contract_hash: string
+  state: CandidateState
+  detail: string
+  diff: string
+  diff_sha256: string
+  changed_paths: string[]
+  explanations: ChangeExplanation[]
+  evidence_refs: string[]
+  expected_effect: string
+  regression_risks: string[]
+  provider: ModelCall | null
+  raw_text: string
+  parsed: boolean
+  parse_note: string
+  validation: ValidationResult | null
+  approval: Approval | null
+  events: InvestigationEvent[]
+  created_at: string
+  updated_at: string
+}
+
+export interface CandidateSummary {
+  id: string
+  incident_id: string
+  investigation_id: string
+  baseline_sha: string
+  state: CandidateState
+  detail: string
+  changed_paths: string[]
+  created_at: string
+  updated_at: string
+}
+
 export interface IncidentCreatePayload {
   title: string
   observed_behavior: string

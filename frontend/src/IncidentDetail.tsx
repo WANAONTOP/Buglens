@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ApiError, api } from './api'
 import type { Incident } from './types'
+import CandidatePanel from './CandidatePanel'
 import EvidenceCapture, { type LocalItem } from './EvidenceCapture'
 import InvestigationPanel from './InvestigationPanel'
 import ReproPanel from './ReproPanel'
@@ -133,6 +134,8 @@ export default function IncidentDetail({ token, incident, onChanged, onClose, in
       <ReproPanel token={token} incident={incident} />
 
       <InvestigationPanel token={token} incident={incident} />
+
+      <CandidatePanel token={token} incident={incident} />
 
       <EvidenceCapture
         key={incident.id}

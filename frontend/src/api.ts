@@ -1,4 +1,6 @@
 import type {
+  Candidate,
+  CandidateSummary,
   Evidence,
   Incident,
   IncidentCreatePayload,
@@ -151,6 +153,45 @@ export const api = {
 
   cancelInvestigation(token: string, invId: string): Promise<InvestigationSummary> {
     return request(token, `/api/investigations/${invId}/cancel`, { method: 'POST' })
+  },
+
+  startCandidate(
+    token: string,
+    incidentId: string,
+    investigationId: string,
+    hypothesisRank: number,
+  ): Promise<CandidateSummary> {
+    return request(token, `/api/incidents/${incidentId}/candidates`, {
+      method: 'POST',
+      body: JSON.stringify({ investigation_id: investigationId, hypothesis_rank: hypothesisRank }),
+    })
+  },
+
+  listCandidates(token: string, incidentId: string): Promise<CandidateSummary[]> {
+    return request(token, `/api/incidents/${incidentId}/candidates`)
+  },
+
+  getCandidate(token: string, candidateId: string): Promise<Candidate> {
+    return request(token, `/api/candidates/${candidateId}`)
+  },
+
+  approveCandidate(
+    token: string,
+    candidateId: string,
+    diffSha256: string,
+    note: string,
+  ): Promise<CandidateSummary> {
+    return request(token, `/api/candidates/${candidateId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ diff_sha256: diffSha256, note }),
+    })
+  },
+
+  rejectCandidate(token: string, candidateId: string, note: string): Promise<CandidateSummary> {
+    return request(token, `/api/candidates/${candidateId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    })
   },
 
   async downloadBlob(token: string, incidentId: string, evidenceId: string): Promise<Blob> {

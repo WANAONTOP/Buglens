@@ -70,6 +70,23 @@ INVESTIGATE_MAX_SOURCE_CHARS = 6000
 INVESTIGATE_MAX_EVIDENCE_ITEMS = 40
 INVESTIGATE_MODEL_TIMEOUT_S = 120.0
 
+# --- Step 7 candidate patch bounds --------------------------------------------
+# One Wonder call per candidate; the diff is validated against the exact
+# pinned source before any approval. Records are immutable once written:
+# approval binds the candidate ID to the diff hash, and any change to the
+# diff, baseline, or contract invalidates it. The 4096 cap is measured:
+# cap 2400 returned status "incomplete" with 0 chars on the 8.5K-char
+# candidate prompt, while 4096 completed with 2747 output tokens (2349
+# of them hidden reasoning).
+PATCH_MAX_CONCURRENT = 1
+PATCH_JOB_TIMEOUT_S = 600.0
+PATCH_WONDER_MAX_TOKENS = 4096
+PATCH_MAX_CANDIDATES_PER_INCIDENT = 3
+PATCH_MAX_SOURCE_CHARS = 12000
+PATCH_MAX_FILES = 5
+PATCH_MAX_CHANGED_LINES = 200
+PATCH_MAX_DIFF_BYTES = 64 * 1024
+
 
 def get_api_token() -> str:
     """Application API token from the environment (there is no default)."""

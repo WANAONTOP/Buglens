@@ -134,6 +134,20 @@ Acceptance checks:
 - [ ] Repro fails on the pinned commit, passes-or-skips rationale recorded.
 - [ ] Frozen repro hash stored; patch attempts cannot modify it.
 
+## Step 7 — Scoped candidate generation + review (M4, no verification)
+
+- One Wonder call per candidate from a completed investigation.
+- Structural diff validation against the pinned baseline before proposal.
+- Developer Approve/Reject bound to the exact diff hash.
+
+Acceptance checks:
+
+- [x] Candidate endpoints, background job, and review panel implemented.
+- [x] Live candidate proposed: 1 in-scope file, validation passed.
+- [x] Attempt budget (3) and approval hash binding enforced + tested.
+- [x] Backend suite (124) and frontend build pass.
+- [x] No approval fabricated; no verification or PR in this milestone.
+
 ## M4 — Patch candidates (muse-wonder-1.0)
 
 - Up to three candidates; approved source files only.
@@ -141,8 +155,8 @@ Acceptance checks:
 
 Acceptance checks:
 
-- [ ] Every candidate lists files changed; all within the approved set.
-- [ ] Attempt count enforced (max three) with time/cost budget logged.
+- [x] Every candidate lists files changed; all within the approved set.
+- [x] Attempt count enforced (max three) with time/cost budget logged.
 
 ## M5 — Modal verification + PR
 

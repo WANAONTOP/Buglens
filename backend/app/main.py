@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import FRONTEND_ORIGIN
 from .routes_incidents import router as incidents_router
 from .routes_investigate import router as investigate_router
+from .routes_patches import router as patches_router
 from .routes_providers import router as providers_router
 from .routes_repro import router as repro_router
 
@@ -28,6 +29,7 @@ app.include_router(incidents_router)
 app.include_router(providers_router)
 app.include_router(repro_router)
 app.include_router(investigate_router)
+app.include_router(patches_router)
 
 
 @app.get("/health")

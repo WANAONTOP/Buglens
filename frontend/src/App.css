@@ -272,6 +272,31 @@
   pointer-events: none;
 }
 
+.diff-view {
+  background: #f6f6f6;
+  border: 1px solid #ddd;
+  padding: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.diff-add {
+  background: #d9ecd9;
+  display: block;
+}
+
+.diff-del {
+  background: #f3d9d9;
+  display: block;
+}
+
+.diff-hunk {
+  color: #174a7c;
+  display: block;
+}
+
 .detail-header {
   display: flex;
   align-items: center;
