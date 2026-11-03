@@ -24,9 +24,14 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent  # backend/
-if str(HERE) not in sys.path:
-    sys.path.insert(0, str(HERE))
+HERE = Path(__file__).resolve().parent  # backend/ locally
+# Remotely Modal uploads this file to /root while the backend directory is
+# baked at /root/backend, so resolve whichever layout actually holds `app`.
+for _candidate in (HERE, HERE / "backend"):
+    if (_candidate / "app" / "__init__.py").is_file():
+        if str(_candidate) not in sys.path:
+            sys.path.insert(0, str(_candidate))
+        break
 
 import modal  # noqa: E402
 
