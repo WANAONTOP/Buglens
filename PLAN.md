@@ -173,6 +173,22 @@ Acceptance checks:
 - [x] Live Modal verification after developer approval: VERIFIED.
 - [ ] PR creation (later milestone).
 
+## Step 9 — Verified GitHub PR publication (M5, explicit Publish only)
+
+- Checkpoint Step 8 (`75d291c`); repair PR holds only the tested change.
+- Trusted publisher: server preflight, pinned repair commit, idempotent
+  branch/PR creation, sanitized reviewable PR body, no auto-merge.
+- Frontend preview + preflight table; Publish enabled only on full pass.
+
+Acceptance checks:
+
+- [x] Publisher, preflight, PR body, and panel implemented.
+- [x] Mocked tests: refusals, idempotency, concurrency, recovery.
+- [x] Frontend build passes.
+- [x] Backend suite passes: 158 (132 + 26 new).
+- [x] Live preflight demo on `1acefb6a…`: 15/15 PASS, `preflight_ok`.
+- [x] Real PR after explicit Publish of the exact preview: PR #1.
+
 ## M5 — Modal verification + PR
 
 - Run frozen repro + patch inside Modal; open GitHub PR only on pass.
@@ -181,5 +197,45 @@ Acceptance checks:
 Acceptance checks:
 
 - [x] Modal run log attached to the run record.
-- [ ] PR created only after a passing verification; PR URL is the real API result.
-- [ ] Merge left to a human reviewer.
+- [x] PR created only after a passing verification; PR URL is the real API result.
+- [x] Merge left to a human reviewer (PR open, unmerged).
+
+## Step 10 — Browser acceptance + release readiness (no deploy, no merge)
+
+- Real headless-browser pass over the local site: auth, incident
+  intake, uploads, prior runs, gates, published PR link.
+- Fix blocking UI issues; keep new paid/model/sandbox spend at zero.
+- Review hosted-frontend + Modal-backend deployment gaps honestly.
+
+Acceptance checks:
+
+- [x] Backend + existing frontend serving locally; sign-in verified.
+- [x] 30/31 scripted browser checks pass; video upload + denied-path
+  verified by focused probes; screenshots captured.
+- [x] VerifyPanel baseline fix + stale copy corrected; build passes.
+- [x] Real screen recording left pending-manual (headless has no picker).
+- [x] Deployment gaps listed; nothing deployed, PR #1 unmerged.
+- [x] Next step: Modal backend entry point + Volume storage (Step 11).
+
+## Step 11 — Modal deployment preparation (implement only, no deploy)
+
+- Real `modal_app.py` entry: ASGI + 4 worker functions (no auto-retry),
+  pinned image, Volume `buglens-data`, Secret `buglens-secrets`.
+- Configurable data dir; per-request volume reload/commit; registry
+  OCC guard (409); documented non-transactional limits.
+- Deploy-mode remote dispatch with prompt job id, polling,
+  timeout/interrupt/duplicate handling; local uvicorn path unchanged.
+- Secrets by name only; sandboxes credential-free; configurable CORS
+  and frontend API URL; shared-token demo limitation documented.
+
+Acceptance checks:
+
+- [x] `modal_app.py` imports; App `buglens-ai` + 5 functions verified
+  structurally (SDK 1.6.3, no network).
+- [x] 22/22 deploy tests pass (local/mocked); full suite 180 green.
+- [x] Frontend build passes with `VITE_BUGLENS_API_URL` support.
+- [x] Deploy commands, secret names, smoke procedure in README.
+- [x] Nothing deployed; PR #1 open/unmerged; pinned baseline and
+  verification evidence untouched.
+- [ ] Live deploy + bounded smoke (upload, job, poll, artifacts,
+  restart persistence) — a later explicit step.

@@ -114,6 +114,7 @@ class Investigation(BaseModel):
     mappings: list[SourceMapping] = Field(default_factory=list)
     wonder: Optional[WonderResult] = None
     events: list[InvestigationEvent] = Field(default_factory=list)
+    worker_call_id: str = ""
     created_at: datetime
     updated_at: datetime
 

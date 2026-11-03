@@ -75,6 +75,7 @@ class Candidate(BaseModel):
     validation: Optional[ValidationResult] = None
     approval: Optional[Approval] = None
     events: list[CandidateEvent] = Field(default_factory=list)
+    worker_call_id: str = ""
     created_at: datetime
     updated_at: datetime
 

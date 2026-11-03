@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
-from . import config
+from . import config, deploy
 from . import store as incident_store
 from .auth import require_auth
 from .manifest import BugLensManifest
@@ -93,7 +93,9 @@ def start_reproduction(incident_id: str) -> ReproSummary:
             if ".." in incident.ref or not _REF_PATTERN.match(incident.ref):
                 raise HTTPException(status_code=422, detail="Stored ref is malformed.")
             sha = resolve_ref_sha(incident.repo, incident.ref, token)
-            incident_store.update_commit_sha(incident.id, sha)
+            incident_store.update_commit_sha(
+                incident.id, sha, deploy.store_version_for_write()
+            )
         tree = fetch_tree(incident.repo, sha, token)
         manifest_bytes = fetch_blob(incident.repo, manifest_blob_sha(tree), token)
         symlink_targets: dict[str, str] = {}
@@ -132,7 +134,11 @@ def start_reproduction(incident_id: str) -> ReproSummary:
     repro_store.add_event(
         run.id, "freeze", f"contract {frozen.contract_hash[:12]} frozen at {frozen.sha[:7]}"
     )
-    if not repro_jobs.try_start(run.id, lambda event: run_reproduction(run.id, event)):
+    try:
+        started = repro_jobs.try_start(run.id, lambda event: run_reproduction(run.id, event))
+    except deploy.DeployError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    if not started:
         def mark_rejected(candidate: ReproRun) -> None:
             candidate.state = "cancelled"
             candidate.detail = "rejected: another reproduction holds the worker"
@@ -169,8 +175,7 @@ def cancel_reproduction(run_id: str) -> ReproSummary:
     run = repro_jobs.reconcile(run)
     if run.state not in ("queued", "running"):
         raise HTTPException(status_code=409, detail=f"Run already {run.state}.")
-    repro_jobs.cancel(run.id)
-    repro_store.add_event(run.id, "lifecycle", "cancellation requested")
+    repro_jobs.cancel(run.id)  # records the lifecycle event itself
     refreshed = repro_store.get_run(run.id)
     assert refreshed is not None
     return ReproSummary.from_run(refreshed)

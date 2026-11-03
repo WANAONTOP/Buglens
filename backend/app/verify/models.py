@@ -64,6 +64,7 @@ class Verification(BaseModel):
     tested: Optional[TestedIdentity] = None
     artifacts: list[VerifyArtifact] = Field(default_factory=list)
     events: list[VerificationEvent] = Field(default_factory=list)
+    worker_call_id: str = ""
     created_at: datetime
     updated_at: datetime
 

@@ -17,6 +17,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
+from . import deploy
 from . import store as incident_store
 from .auth import require_auth
 from .investigate import store as inv_store
@@ -87,7 +88,13 @@ def start_verification(candidate_id: str) -> VerificationSummary:
     )
     verify_store.create(verification)
     verify_store.add_event(verification.id, "lifecycle", f"queued for candidate {candidate.id[:12]}")
-    if not verify_jobs.try_start(verification.id, lambda event: run_verification(verification.id, event)):
+    try:
+        started = verify_jobs.try_start(
+            verification.id, lambda event: run_verification(verification.id, event)
+        )
+    except deploy.DeployError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    if not started:
         def mark_rejected(item: Verification) -> None:
             item.state = "blocked"
             item.outcome = "BLOCKED"
@@ -125,8 +132,7 @@ def cancel_verification(verification_id: str) -> VerificationSummary:
     verification = verify_jobs.reconcile(verification)
     if verification.state not in ("queued", "running"):
         raise HTTPException(status_code=409, detail=f"Verification already {verification.state}.")
-    verify_jobs.cancel(verification.id)
-    verify_store.add_event(verification.id, "lifecycle", "cancellation requested")
+    verify_jobs.cancel(verification.id)  # records the lifecycle event itself
     refreshed = verify_store.get(verification.id)
     assert refreshed is not None
     return VerificationSummary.from_verification(refreshed)

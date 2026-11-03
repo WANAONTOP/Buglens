@@ -17,10 +17,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from .. import config
+from .. import config, deploy
 from .models import Investigation, InvestigationEvent
 
 _lock = threading.Lock()
+
+TERMINAL_STATES = frozenset({"done", "blocked", "cancelled", "error"})
 
 
 def _base_dir() -> Path:
@@ -50,6 +52,7 @@ def _write_record(inv: Investigation) -> None:
         except OSError:
             pass
         raise
+    deploy.sync_after_write()
 
 
 def _read_record(inv_id: str) -> Optional[Investigation]:
@@ -93,11 +96,28 @@ def list_for_incident(incident_id: str) -> list[Investigation]:
     return sorted(found, key=lambda i: i.created_at, reverse=True)
 
 
-def update(inv_id: str, mutate: Callable[[Investigation], None]) -> Optional[Investigation]:
-    """Atomically mutate one record (mutation runs under the lock)."""
+def update(
+    inv_id: str,
+    mutate: Callable[[Investigation], None],
+    expect_states: Optional[tuple[str, ...]] = None,
+) -> Optional[Investigation]:
+    """Mutate one record; None when missing or the guard refuses.
+
+    ``expect_states`` refuses the write unless the record is in one of
+    those states (handoff preconditions, both modes). Deploy mode
+    additionally reloads first and refuses every write to a terminal
+    record, so a stale container aborts instead of resurrecting or
+    overwriting newer state.
+    """
     with _lock:
+        if deploy.is_modal():
+            deploy.sync_before_read()
         inv = _read_record(inv_id)
         if inv is None:
+            return None
+        if expect_states is not None and inv.state not in expect_states:
+            return None
+        if deploy.is_modal() and inv.state in TERMINAL_STATES:
             return None
         mutate(inv)
         inv.updated_at = utcnow()

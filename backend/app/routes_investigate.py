@@ -14,6 +14,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from . import deploy
 from . import store as incident_store
 from .auth import require_auth
 from .repro import store as repro_store
@@ -65,7 +66,11 @@ def start_investigation(incident_id: str, payload: InvestigationStart) -> Invest
     )
     inv_store.create(inv)
     inv_store.add_event(inv.id, "lifecycle", f"queued for run {run.id[:12]}")
-    if not inv_jobs.try_start(inv.id, lambda event: run_investigation(inv.id, event)):
+    try:
+        started = inv_jobs.try_start(inv.id, lambda event: run_investigation(inv.id, event))
+    except deploy.DeployError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    if not started:
         def mark_rejected(candidate: Investigation) -> None:
             candidate.state = "cancelled"
             candidate.detail = "rejected: another investigation holds the worker"
@@ -102,8 +107,7 @@ def cancel_investigation(inv_id: str) -> InvestigationSummary:
     inv = inv_jobs.reconcile(inv)
     if inv.state not in ("queued", "running"):
         raise HTTPException(status_code=409, detail=f"Investigation already {inv.state}.")
-    inv_jobs.cancel(inv.id)
-    inv_store.add_event(inv.id, "lifecycle", "cancellation requested")
+    inv_jobs.cancel(inv.id)  # records the lifecycle event itself
     refreshed = inv_store.get(inv.id)
     assert refreshed is not None
     return InvestigationSummary.from_investigation(refreshed)

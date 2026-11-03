@@ -1,14 +1,22 @@
 """Backend configuration.
 
-Local development only. Production settings will be introduced with the
-Modal deployment milestone.
+Local development defaults, overridable per setting for the Modal
+deployment milestone (see ``deploy.py`` and README "Deploying").
 """
 
 import os
 from pathlib import Path
 
 # Exact origin served by `npm run dev` in frontend/ (Vite default).
+# Overridable via FRONTEND_ORIGIN / BUGLENS_CORS_ORIGINS (comma-separated).
 FRONTEND_ORIGIN = "http://localhost:5173"
+
+
+def get_cors_origins() -> list[str]:
+    """Allowed CORS origins: env override or the local Vite default."""
+    raw = os.environ.get("BUGLENS_CORS_ORIGINS", "") or os.environ.get("FRONTEND_ORIGIN", "")
+    origins = [part.strip() for part in raw.split(",") if part.strip()]
+    return origins or [FRONTEND_ORIGIN]
 
 # Backend host/port used in README startup commands.
 BACKEND_HOST = "127.0.0.1"
@@ -100,6 +108,9 @@ VERIFY_PYTEST_TIMEOUT_S = 600.0
 VERIFY_PIXEL_DIFF_FRACTION = 0.001
 VERIFY_PIXEL_CHANNEL_TOLERANCE = 8
 VERIFY_PYTHON_IMAGE = "python:3.13-slim"
+
+# Step 9: at most one GitHub publication (branch + PR writes) at a time.
+PUBLISH_MAX_CONCURRENT = 1
 
 
 def get_api_token() -> str:

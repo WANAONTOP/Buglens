@@ -5,6 +5,12 @@ once; further starts are rejected (HTTP 429) rather than queued silently.
 Each job gets a cancellation event the runner polls between model calls.
 If the backend restarts mid-run, ``reconcile`` marks the orphaned record
 on the next status read instead of leaving it running forever.
+
+Deploy mode (``BUGLENS_JOBS=modal``) spawns a Modal worker function per
+investigation instead of a thread; capacity is enforced by counting
+active records, cancellation terminates the remote call, and stale
+records (no persisted progress within budget) reconcile as lost
+workers.
 """
 
 from __future__ import annotations
@@ -13,9 +19,13 @@ import concurrent.futures
 import threading
 from typing import Callable, Optional
 
-from .. import config
+from .. import config, deploy
 from . import store as inv_store
-from .models import Investigation
+from .models import Investigation, InvestigationEvent
+
+REMOTE_WORKER = "run_investigate_worker"
+RECORD_SUBDIR = "investigations"
+ACTIVE_STATES = ("queued", "running")
 
 _executor = concurrent.futures.ThreadPoolExecutor(
     max_workers=2, thread_name_prefix="investigate"
@@ -24,6 +34,10 @@ _capacity: Optional[threading.Semaphore] = None
 _capacity_lock = threading.Lock()
 _live: dict[str, dict] = {}
 _live_lock = threading.Lock()
+# Serializes remote spawn check-and-act (the API is one container, so
+# this lock makes duplicate submissions deterministic: exactly one
+# worker per record, never two).
+_spawn_lock = threading.Lock()
 
 
 def _semaphore() -> threading.Semaphore:
@@ -43,14 +57,56 @@ def reset_for_tests() -> None:
 
 def has_capacity() -> bool:
     """Advisory capacity probe (the try_start gate stays authoritative)."""
+    if deploy.use_remote_workers():
+        return (
+            deploy.count_active(RECORD_SUBDIR, ACTIVE_STATES)
+            < max(1, config.INVESTIGATE_MAX_CONCURRENT)
+        )
     if _semaphore().acquire(blocking=False):
         _semaphore().release()
         return True
     return False
 
 
+def _try_start_remote(inv_id: str) -> bool:
+    """Spawn the deployed worker exactly once; False when at capacity.
+
+    A repeat submission for an already-dispatched record returns True
+    without spawning again. Raises ``DeployError`` when the spawn
+    itself fails (routes map it to 502): a spawn failure is not a
+    capacity signal.
+    """
+    with _spawn_lock:
+        deploy.sync_before_read()
+        inv = inv_store.get(inv_id)
+        if inv is None:
+            return False
+        if inv.worker_call_id or inv.state != "queued":
+            return True
+        if (
+            deploy.count_active(RECORD_SUBDIR, ACTIVE_STATES, exclude=inv_id)
+            >= max(1, config.INVESTIGATE_MAX_CONCURRENT)
+        ):
+            return False
+        call_id = deploy.spawn_worker(REMOTE_WORKER, inv_id)
+
+        def mark_spawned(candidate: Investigation) -> None:
+            candidate.worker_call_id = call_id
+
+        marked = inv_store.update(inv_id, mark_spawned, expect_states=("queued",))
+        if marked is None:  # defensive: the worker waits for this mark,
+            deploy.cancel_call(call_id)  # so it cannot have claimed first
+            return False
+        return True
+
+
 def try_start(inv_id: str, fn: Callable[[threading.Event], None]) -> bool:
-    """Reserve capacity and submit the job; False when at capacity."""
+    """Reserve capacity and submit the job; False when at capacity.
+
+    Deploy mode ignores ``fn`` and spawns the remote worker instead.
+    """
+    if deploy.use_remote_workers():
+        return _try_start_remote(inv_id)
     if not _semaphore().acquire(blocking=False):
         return False
     cancel_event = threading.Event()
@@ -72,14 +128,50 @@ def try_start(inv_id: str, fn: Callable[[threading.Event], None]) -> bool:
     return True
 
 
+def _cancel_remote(inv_id: str) -> bool:
+    """Kill the deployed worker, then mark the record cancelled.
+
+    The kill is confirmed (briefly) before the mark, and the mark
+    expects an active record, so a completion that landed first is
+    never overwritten. Residual risk is only a worker that survives
+    container termination and writes after the mark.
+    """
+    inv = inv_store.get(inv_id)
+    if inv is None or inv.state not in ACTIVE_STATES:
+        return False
+    if inv.worker_call_id:
+        deploy.cancel_call(inv.worker_call_id)
+        deploy.wait_for_call_end(inv.worker_call_id)
+    deploy.sync_before_read()
+
+    def mark_cancelled(candidate: Investigation) -> None:
+        candidate.state = "cancelled"
+        candidate.detail = "cancellation requested; remote worker terminated"
+        candidate.events.append(
+            InvestigationEvent(
+                at=inv_store.utcnow(),
+                phase="lifecycle",
+                message="cancellation requested",
+            )
+        )
+
+    return (
+        inv_store.update(inv_id, mark_cancelled, expect_states=ACTIVE_STATES)
+        is not None
+    )
+
+
 def cancel(inv_id: str) -> bool:
     """Request cancellation; True when a live job was signalled."""
+    if deploy.use_remote_workers():
+        return _cancel_remote(inv_id)
     with _live_lock:
         job = _live.get(inv_id)
         if job is None:
             return False
         job["event"].set()
-        return True
+    inv_store.add_event(inv_id, "lifecycle", "cancellation requested")
+    return True
 
 
 def is_live(inv_id: str) -> bool:
@@ -88,15 +180,61 @@ def is_live(inv_id: str) -> bool:
 
 
 def reconcile(inv: Investigation) -> Investigation:
-    """Mark orphaned active investigations (e.g. after a backend restart)."""
-    if inv.state in ("queued", "running") and not is_live(inv.id):
-        def mark_blocked(candidate: Investigation) -> None:
-            candidate.state = "blocked"
-            candidate.detail = "backend restarted or worker lost; run did not complete"
+    """Mark orphaned active investigations (e.g. after a backend restart).
 
-        updated = inv_store.update(inv.id, mark_blocked)
-        if updated is not None:
-            inv_store.add_event(inv.id, "lifecycle", updated.detail)
+    Deploy mode marks a stale record lost only when its worker call is
+    confirmed finished (or was never recorded): a quiet-but-alive
+    worker, or one whose liveness cannot be determined, is left alone.
+    """
+    if inv.state in ACTIVE_STATES:
+        if deploy.is_modal():
+            if not deploy.is_stale(inv.updated_at):
+                return inv
+            record = inv_store.get(inv.id)
+            if record is None or record.state not in ACTIVE_STATES:
+                return record if record is not None else inv
+            if record.worker_call_id:
+                try:
+                    status = deploy.call_status(record.worker_call_id)
+                except deploy.DeployError:
+                    return record
+                if status != "finished":
+                    return record
+
+            def mark_lost(candidate: Investigation) -> None:
+                candidate.state = "blocked"
+                candidate.detail = (
+                    "remote worker lost (no persisted progress within budget); "
+                    "run did not complete"
+                )
+                candidate.events.append(
+                    InvestigationEvent(
+                        at=inv_store.utcnow(),
+                        phase="lifecycle",
+                        message=candidate.detail,
+                    )
+                )
+
+            updated = inv_store.update(inv.id, mark_lost, expect_states=ACTIVE_STATES)
+            if updated is not None:
+                return updated
             refreshed = inv_store.get(inv.id)
-            return refreshed if refreshed is not None else updated
+            return refreshed if refreshed is not None else record
+        if not is_live(inv.id):
+            def mark_blocked(candidate: Investigation) -> None:
+                candidate.state = "blocked"
+                candidate.detail = "backend restarted or worker lost; run did not complete"
+                candidate.events.append(
+                    InvestigationEvent(
+                        at=inv_store.utcnow(),
+                        phase="lifecycle",
+                        message=candidate.detail,
+                    )
+                )
+
+            updated = inv_store.update(inv.id, mark_blocked, expect_states=ACTIVE_STATES)
+            if updated is not None:
+                return updated
+            refreshed = inv_store.get(inv.id)
+            return refreshed if refreshed is not None else inv
     return inv

@@ -7,13 +7,20 @@ import type {
   IncidentSummary,
   Investigation,
   InvestigationSummary,
+  Publication,
+  PublicationPreview,
   ReproRun,
   ReproSummary,
   Verification,
   VerificationSummary,
 } from './types'
 
-export const BACKEND_URL = 'http://127.0.0.1:8000'
+// Build-time override for a hosted backend (`VITE_BUGLENS_API_URL` in
+// frontend/.env); falls back to the local uvicorn default.
+const configuredUrl = (import.meta.env.VITE_BUGLENS_API_URL as string | undefined)?.trim()
+
+export const BACKEND_URL =
+  configuredUrl && configuredUrl.length > 0 ? configuredUrl : 'http://127.0.0.1:8000'
 
 const TOKEN_KEY = 'buglens-api-token'
 
@@ -230,6 +237,46 @@ export const api = {
       throw new ApiError(response.status, await parseErrorBody(response))
     }
     return response.blob()
+  },
+
+  previewPublication(
+    token: string,
+    candidateId: string,
+    verificationId: string,
+    prTitle: string,
+  ): Promise<PublicationPreview> {
+    return request(token, '/api/publications/preview', {
+      method: 'POST',
+      body: JSON.stringify({
+        candidate_id: candidateId,
+        verification_id: verificationId,
+        pr_title: prTitle,
+      }),
+    })
+  },
+
+  publishRepair(
+    token: string,
+    candidateId: string,
+    verificationId: string,
+    prTitle: string,
+  ): Promise<Publication> {
+    return request(token, '/api/publications', {
+      method: 'POST',
+      body: JSON.stringify({
+        candidate_id: candidateId,
+        verification_id: verificationId,
+        pr_title: prTitle,
+      }),
+    })
+  },
+
+  listPublications(token: string, candidateId: string): Promise<Publication[]> {
+    return request(token, `/api/candidates/${candidateId}/publications`)
+  },
+
+  getPublication(token: string, publicationId: string): Promise<Publication> {
+    return request(token, `/api/publications/${publicationId}`)
   },
 
   async downloadBlob(token: string, incidentId: string, evidenceId: string): Promise<Blob> {

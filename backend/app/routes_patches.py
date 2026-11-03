@@ -15,7 +15,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from . import config
+from . import config, deploy
 from . import store as incident_store
 from .auth import require_auth
 from .investigate import store as inv_store
@@ -88,7 +88,13 @@ def start_candidate(incident_id: str, payload: CandidateStart) -> CandidateSumma
     )
     patch_store.create(candidate)
     patch_store.add_event(candidate.id, "lifecycle", f"queued for hypothesis {payload.hypothesis_rank}")
-    if not patch_jobs.try_start(candidate.id, lambda event: run_candidate(candidate.id, event)):
+    try:
+        started = patch_jobs.try_start(
+            candidate.id, lambda event: run_candidate(candidate.id, event)
+        )
+    except deploy.DeployError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    if not started:
         def mark_rejected(item: Candidate) -> None:
             item.state = "blocked"
             item.detail = "rejected: another candidate holds the worker"
@@ -182,8 +188,7 @@ def cancel_candidate(candidate_id: str) -> CandidateSummary:
     candidate = patch_jobs.reconcile(candidate)
     if candidate.state not in ("queued", "generating"):
         raise HTTPException(status_code=409, detail=f"Candidate already {candidate.state}.")
-    patch_jobs.cancel(candidate.id)
-    patch_store.add_event(candidate.id, "lifecycle", "cancellation requested")
+    patch_jobs.cancel(candidate.id)  # records the lifecycle event itself
     refreshed = patch_store.get(candidate.id)
     assert refreshed is not None
     return CandidateSummary.from_candidate(refreshed)

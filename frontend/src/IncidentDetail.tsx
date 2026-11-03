@@ -80,7 +80,7 @@ export default function IncidentDetail({ token, incident, onChanged, onClose, in
         <dt>Investigation</dt>
         <dd>
           {incident.investigation_blockers.length === 0 ? (
-            'Prerequisites recorded (execution lands in a later milestone).'
+            'Prerequisites recorded.'
           ) : (
             <>
               Cannot run yet — still needed:

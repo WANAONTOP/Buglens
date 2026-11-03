@@ -157,7 +157,7 @@ export default function VerifyPanel({ token, candidate }: Props) {
 
   return (
     <section>
-      <h4>Seven-gate verification (no PR in this milestone)</h4>
+      <h4>Seven-gate verification</h4>
       {!approved ? (
         <p className="hint">
           Verification requires developer approval of this candidate; the current state is{' '}
@@ -214,7 +214,7 @@ export default function VerifyPanel({ token, candidate }: Props) {
               </>
             )}
             <dt>Baseline</dt>
-            <dd>{selected.baseline_sha}</dd>
+            <dd>{candidate.baseline_sha}</dd>
             <dt>Policy</dt>
             <dd>{selected.policy_hash || 'not frozen yet'}</dd>
             {selected.tested !== null && (

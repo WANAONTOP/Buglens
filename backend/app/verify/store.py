@@ -18,10 +18,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from .. import config
+from .. import config, deploy
 from .models import Verification, VerificationEvent
 
 _lock = threading.Lock()
+
+TERMINAL_STATES = frozenset({"done", "blocked", "error"})
 
 
 def _base_dir() -> Path:
@@ -55,6 +57,7 @@ def _write_record(verification: Verification) -> None:
         except OSError:
             pass
         raise
+    deploy.sync_after_write()
 
 
 def _read_record(verification_id: str) -> Optional[Verification]:
@@ -98,11 +101,28 @@ def list_for_candidate(candidate_id: str) -> list[Verification]:
     return sorted(found, key=lambda v: v.created_at, reverse=True)
 
 
-def update(verification_id: str, mutate: Callable[[Verification], None]) -> Optional[Verification]:
-    """Atomically mutate one record (mutation runs under the lock)."""
+def update(
+    verification_id: str,
+    mutate: Callable[[Verification], None],
+    expect_states: Optional[tuple[str, ...]] = None,
+) -> Optional[Verification]:
+    """Mutate one record; None when missing or the guard refuses.
+
+    ``expect_states`` refuses the write unless the record is in one of
+    those states (handoff preconditions, both modes). Deploy mode
+    additionally reloads first and refuses every write to a terminal
+    record, so a stale container aborts instead of resurrecting or
+    overwriting newer state.
+    """
     with _lock:
+        if deploy.is_modal():
+            deploy.sync_before_read()
         verification = _read_record(verification_id)
         if verification is None:
+            return None
+        if expect_states is not None and verification.state not in expect_states:
+            return None
+        if deploy.is_modal() and verification.state in TERMINAL_STATES:
             return None
         mutate(verification)
         verification.updated_at = utcnow()

@@ -326,7 +326,6 @@ export interface Verification {
   investigation_id: string
   candidate_id: string
   repo: string
-  baseline_sha: string
   contract_hash: string
   policy_hash: string
   approval: {
@@ -359,6 +358,49 @@ export interface VerificationSummary {
   gates_passed: number
   created_at: string
   updated_at: string
+}
+
+export interface PreflightCheck {
+  name: string
+  ok: boolean
+  detail: string
+}
+
+export interface Publication {
+  id: string
+  incident_id: string
+  candidate_id: string
+  verification_id: string
+  repo: string
+  base_branch: string
+  base_sha: string
+  branch: string
+  pr_title: string
+  state: 'publishing' | 'published' | 'failed'
+  detail: string
+  commit_sha: string
+  pr_number: number
+  pr_url: string
+  preflight: PreflightCheck[]
+  events: InvestigationEvent[]
+  created_at: string
+  updated_at: string
+}
+
+export interface PublicationPreview {
+  repo: string
+  base_branch: string
+  base_sha: string
+  branch: string
+  changed_files: string[]
+  diff: string
+  diff_sha256: string
+  pr_title: string
+  pr_body: string
+  verification_id: string
+  candidate_id: string
+  preflight: PreflightCheck[]
+  preflight_ok: boolean
 }
 
 export interface IncidentCreatePayload {

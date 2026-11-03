@@ -36,6 +36,7 @@ class ReproRun(BaseModel):
     detail: str = ""
     events: list[ReproEvent] = Field(default_factory=list)
     artifacts: list[ReproArtifact] = Field(default_factory=list)
+    worker_call_id: str = ""
     created_at: datetime
     updated_at: datetime
 

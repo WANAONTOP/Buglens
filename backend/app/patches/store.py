@@ -22,10 +22,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from .. import config
+from .. import config, deploy
 from .models import Candidate, CandidateEvent
 
 _lock = threading.Lock()
+
+# Review states (proposed/approved/rejected) are deliberately excluded:
+# the worker is finished before review starts, so those API-side
+# transitions have a single writer and need no cross-container guard.
+TERMINAL_STATES = frozenset({"blocked", "error"})
 
 
 def _base_dir() -> Path:
@@ -55,6 +60,7 @@ def _write_record(candidate: Candidate) -> None:
         except OSError:
             pass
         raise
+    deploy.sync_after_write()
 
 
 def _read_record(candidate_id: str) -> Optional[Candidate]:
@@ -98,11 +104,28 @@ def list_for_incident(incident_id: str) -> list[Candidate]:
     return sorted(found, key=lambda c: c.created_at, reverse=True)
 
 
-def update(candidate_id: str, mutate: Callable[[Candidate], None]) -> Optional[Candidate]:
-    """Atomically mutate one record (mutation runs under the lock)."""
+def update(
+    candidate_id: str,
+    mutate: Callable[[Candidate], None],
+    expect_states: Optional[tuple[str, ...]] = None,
+) -> Optional[Candidate]:
+    """Mutate one record; None when missing or the guard refuses.
+
+    ``expect_states`` refuses the write unless the record is in one of
+    those states (handoff preconditions, both modes). Deploy mode
+    additionally reloads first and refuses every write to a terminal
+    record, so a stale container aborts instead of resurrecting or
+    overwriting newer state.
+    """
     with _lock:
+        if deploy.is_modal():
+            deploy.sync_before_read()
         candidate = _read_record(candidate_id)
         if candidate is None:
+            return None
+        if expect_states is not None and candidate.state not in expect_states:
+            return None
+        if deploy.is_modal() and candidate.state in TERMINAL_STATES:
             return None
         mutate(candidate)
         candidate.updated_at = utcnow()

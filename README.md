@@ -304,6 +304,114 @@ approved diff). Status: live verification `1acefb6a…` of approved candidate
 `ecd72616…` returned `VERIFIED` — all seven gates passed on fresh
 Modal sandboxes (see NEW_WORK.md). No PR publication in this milestone.
 
+## Verified PR publication (Step 9 — explicit Publish only, never auto-merge)
+
+The publisher files a GitHub PR for a completed live `VERIFIED` run
+and nothing else. Before any write it re-runs a server-side preflight
+entirely from stored records plus live GitHub reads: completed live
+verification with 7/7 PASS over verified artifact bytes and four
+sandbox-terminated markers, valid approval binding, candidate /
+baseline / contract / policy / tested-byte / diff-hash agreement,
+approved repository, not superseded or cancelled, recomputed change
+bytes equal to the tested bytes, remote base branch still at the
+verified baseline, and repair-branch state. A moved base stops
+publication rather than transplanting the verification.
+
+The repair commit is built from the pinned baseline plus the exact
+recomputed bytes (`buglens/fix-<candidate8>`); publish verifies an
+existing branch before reuse (same commit, or an equivalent commit
+with identical tree/parent/message) and never force-pushes. Publication
+is idempotent per candidate + verification, serialized to one worker,
+and orphaned intents recover from live GitHub state. The PR body is a
+sanitized evidence summary (baseline, verification ID, seven gates,
+suite counts, viewport, limitations, fixture notice) with no
+credentials, traces, or localhost links — and no GitHub CI claim.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/publications/preview` | Read-only preview + full preflight (body `{"candidate_id", "verification_id", "pr_title?"}`) |
+| POST | `/api/publications` | Publish the exact preview (explicit Publish; 201; 409 on refusal) |
+| GET | `/api/candidates/{id}/publications` | List publication records |
+| GET | `/api/publications/{pid}` | Full record: real PR URL only after GitHub confirms |
+
+In the UI, open the candidate, pick the verified run, and choose
+"Load preview & preflight". "Publish this exact preview to GitHub"
+stays disabled until every server check passes, and asks for
+confirmation before writing. Status: authorized single PR created
+and read-back verified — PR #1,
+https://github.com/WANAONTOP/Buglens/pull/1
+("Fix checkout overlay intercepting Pay now clicks"), head
+`b59b1d7d…` on `buglens/fix-ecd72616`, exactly the tested one-line
+change; open and unmerged, merge left to a human. This is an owned
+evaluation-fixture repair verified within the tested scope; checks
+ran in Modal, not GitHub CI (see NEW_WORK.md).
+
+## Modal deployment (Step 11 — prepared, NOT deployed)
+
+The backend is ready to deploy to Modal but has not been deployed:
+no `modal deploy` run, no secrets created, no live remote checks in
+this step. Local uvicorn development is unchanged and remains the
+default; deploy behavior activates only when `BUGLENS_MODAL=1` and
+`BUGLENS_JOBS=modal` are both set (the Modal app sets both remotely).
+
+What exists: `backend/modal_app.py` (Modal App `buglens-ai`: one
+`max_containers=1` ASGI function plus `run_repro_worker`,
+`run_investigate_worker`, `run_candidate_worker`,
+`run_verify_worker`, all sharing Volume `buglens-data` at `/data`
+and Secret `buglens-secrets`); `backend/app/deploy.py` (flags,
+volume sync, remote spawn/cancel, capacity counts, incidents-registry
+optimistic-concurrency guard → HTTP 409); `backend/app/workers.py`
+(guarded remote entry points, crash marking, no auto-retry);
+per-request volume reload/commit middleware; `worker_call_id` on job
+records; `BUGLENS_CORS_ORIGINS` allowlist; frontend
+`VITE_BUGLENS_API_URL` (see `frontend/.env.example`).
+
+The shared Volume is not a transactional database. Concurrency
+limits: the API runs as a single container so its in-process locks
+stay valid; each worker owns exactly one record file; the
+single-file incidents registry fails loudly (409) on write conflicts;
+same-record writes from two containers are last-writer-wins (a
+crash-only race via the worker claim check, never the normal path).
+Shared-token `BUGLENS_API_TOKEN` auth is a single-developer demo
+limitation. Sandboxes still receive no credentials.
+
+Required Modal Secret `buglens-secrets` names (values never in the
+repo, logs, or images): `META_API_KEY`, `GITHUB_TOKEN`,
+`GITHUB_REPO`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`,
+`BUGLENS_API_TOKEN`, `BUGLENS_CORS_ORIGINS`, and optionally
+`BASETEN_API_KEY`.
+
+Exact PowerShell deployment commands (Modal SDK 1.6.3, from the repo
+root, using the project environment). Create `.env.modal` (gitignored
+via `.env.*`) holding the secret names above, then delete it after:
+
+```powershell
+.venv\Scripts\modal.exe volume create buglens-data
+.venv\Scripts\modal.exe secret create buglens-secrets --from-dotenv .env.modal
+Remove-Item .env.modal
+.venv\Scripts\modal.exe deploy backend/modal_app.py
+```
+
+Then point a hosted frontend at the deployed API URL with
+`VITE_BUGLENS_API_URL` (no trailing slash) and rebuild.
+
+Bounded live smoke procedure (not yet run — deploy step only):
+1. `GET /health` on the deployed URL returns ok.
+2. Create a draft incident (authenticated), upload a small screenshot,
+   confirm it lists back.
+3. Start one reproduction; poll status until terminal; download one
+   artifact.
+4. Restart/redeploy the API container; confirm the incident, evidence,
+   and job record persist from the Volume.
+5. Confirm a second write to the incidents registry under a stale
+   version returns 409, not silent loss.
+
+Remaining blockers: live restart persistence and remote worker
+execution are unverified (all Step 11 checks are local/mocked);
+30-minute verifications vs the 2400s worker timeout need a live run;
+multi-replica API would break in-process locks (held at
+`max_containers=1` by design).
+
 ## Configuration
 
 `.env` holds local secrets (see `.env.example`). Never commit it.
@@ -315,6 +423,8 @@ Modal sandboxes (see NEW_WORK.md). No PR publication in this milestone.
 - `backend/app/` — FastAPI service (`/health`, `/api/*`).
 - `backend/app/repro/` — published-source resolution, contract freeze,
   Modal runner, background jobs, run store.
+- `backend/modal_app.py` — Modal deployment entry (ASGI + 4 workers;
+  local dev stays on uvicorn).
 - `backend/tests/` — backend test suite.
 - `AGENTS.md` — binding engineering rules.
 - `PLAN.md` — milestones and acceptance checks.

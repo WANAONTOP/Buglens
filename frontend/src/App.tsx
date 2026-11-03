@@ -188,7 +188,7 @@ function App() {
   return (
     <main className="page">
       <h1>BugLens AI</h1>
-      <p className="subtitle">M1 milestone: evidence intake</p>
+      <p className="subtitle">Reproduce, diagnose, verify, and publish UI bug fixes</p>
 
       <section className="status-card" aria-live="polite">
         <div className="status-row">

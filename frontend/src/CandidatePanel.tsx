@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import PublishPanel from './PublishPanel'
 import VerifyPanel from './VerifyPanel'
 import { ApiError, api } from './api'
 import type {
@@ -168,7 +169,7 @@ export default function CandidatePanel({ token, incident }: Props) {
 
   return (
     <section>
-      <h3>Candidate patches (review only — no verification yet)</h3>
+      <h3>Candidate patches</h3>
       {invs === null ? (
         <p className="hint">Loading investigations…</p>
       ) : invs.length === 0 ? (
@@ -357,6 +358,7 @@ export default function CandidatePanel({ token, incident }: Props) {
             )}
 
           <VerifyPanel token={token} candidate={selected} />
+          <PublishPanel token={token} candidate={selected} />
         </div>
       )}
     </section>

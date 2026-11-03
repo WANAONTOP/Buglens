@@ -18,10 +18,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from .. import config
+from .. import config, deploy
 from .models import ReproArtifact, ReproEvent, ReproRun
 
 _lock = threading.Lock()
+
+TERMINAL_STATES = frozenset({"done", "cancelled", "error"})
 
 
 def _runs_dir() -> Path:
@@ -59,6 +61,7 @@ def _write_record(run: ReproRun) -> None:
         except OSError:
             pass
         raise
+    deploy.sync_after_write()
 
 
 def create_run(run: ReproRun) -> ReproRun:
@@ -104,11 +107,28 @@ def list_runs_for_incident(incident_id: str) -> list[ReproRun]:
     return sorted(runs, key=lambda r: r.created_at, reverse=True)
 
 
-def update_run(run_id: str, mutate: Callable[[ReproRun], None]) -> Optional[ReproRun]:
-    """Atomically mutate one run record (mutation runs under the lock)."""
+def update_run(
+    run_id: str,
+    mutate: Callable[[ReproRun], None],
+    expect_states: Optional[tuple[str, ...]] = None,
+) -> Optional[ReproRun]:
+    """Mutate one run record; None when missing or the guard refuses.
+
+    ``expect_states`` refuses the write unless the record is in one of
+    those states (handoff preconditions, both modes). Deploy mode
+    additionally reloads first and refuses every write to a terminal
+    record, so a stale container aborts instead of resurrecting or
+    overwriting newer state.
+    """
     with _lock:
+        if deploy.is_modal():
+            deploy.sync_before_read()
         run = _read_record(run_id)
         if run is None:
+            return None
+        if expect_states is not None and run.state not in expect_states:
+            return None
+        if deploy.is_modal() and run.state in TERMINAL_STATES:
             return None
         mutate(run)
         run.updated_at = utcnow()
@@ -177,6 +197,7 @@ def save_contract(run_id: str, payload: dict) -> None:
         except OSError:
             pass
         raise
+    deploy.sync_after_write()
 
 
 def load_contract(run_id: str) -> Optional[dict]:

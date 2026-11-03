@@ -12,7 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
-from . import config, store
+from . import config, deploy, store
 from .auth import require_auth
 from .media import MediaValidationError, identify_media, sanitize_filename
 from .models import (
@@ -58,7 +58,7 @@ def create_incident(payload: IncidentCreate) -> Incident:
         updated_at=now,
         **payload.model_dump(),
     )
-    return store.create_incident(incident)
+    return store.create_incident(incident, deploy.store_version_for_write())
 
 
 @router.get("/incidents", response_model=list[IncidentSummary])
@@ -73,7 +73,11 @@ def get_incident(incident_id: str) -> Incident:
 
 @router.patch("/incidents/{incident_id}/commit", response_model=Incident)
 def pin_commit(incident_id: str, payload: CommitPin) -> Incident:
-    updated = store.update_commit_sha(_check_id(incident_id, "incident"), payload.commit_sha)
+    updated = store.update_commit_sha(
+        _check_id(incident_id, "incident"),
+        payload.commit_sha,
+        deploy.store_version_for_write(),
+    )
     if updated is None:
         raise HTTPException(status_code=404, detail="Unknown incident.")
     return updated
@@ -235,7 +239,9 @@ async def upload_evidence(
         created_at=store.utcnow(),
     )
     evidence.stored_filename = f"{evidence.id}.{media.extension}"
-    return store.add_evidence(incident.id, evidence, staged)
+    return store.add_evidence(
+        incident.id, evidence, staged, deploy.store_version_for_write()
+    )
 
 
 @router.get("/incidents/{incident_id}/evidence/{evidence_id}/download")

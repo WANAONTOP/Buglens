@@ -487,6 +487,10 @@ def test_start_runs_full_pipeline_and_persists(client, repro_env, fake_modal, mo
     assert kwargs is not None and FakeModal.terminated
     blob = json.dumps(kwargs, default=str)
     assert "ak-dummy" not in blob and "as-dummy" not in blob and "ghp-dummy" not in blob
+    executed = "\n".join(FakeModal.seen)
+    assert "ak-dummy" not in executed
+    assert "as-dummy" not in executed
+    assert "ghp-dummy" not in executed
     assert kwargs["cpu"] == config.REPRO_SANDBOX_CPU
     assert kwargs["memory"] == config.REPRO_SANDBOX_MEMORY_MB
     assert "node" in str(FakeModal.created_image)

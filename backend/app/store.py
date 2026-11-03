@@ -14,8 +14,15 @@ STORAGE CONCURRENCY LIMITS (M1, local development only):
   JSON record could lose an evidence entry.
 - No quotas are enforced across restarts beyond what ``incidents.json``
   records; per-incident byte/count caps are checked on upload only.
-- M5 (Modal deployment) must replace this module with a transactional
-  store. The route layer only depends on the functions below.
+- Deploy mode (Modal, one API container + workers): every write commits
+  the shared Volume (``deploy.sync_after_write``), and mutators accept
+  an ``expected`` registry version for optimistic concurrency — a write
+  whose base moved raises ``ConflictError`` (HTTP 409) instead of
+  silently dropping the other update. This is still not a transactional
+  database: same-instant writers can both pass the check, and the
+  single-file registry stays a contention point. Per-record stores
+  (one file per run/investigation/candidate/verification) are the unit
+  of isolation. See ``deploy.py`` for the full limits.
 """
 
 from __future__ import annotations
@@ -28,7 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from . import config
+from . import config, deploy
 from .models import Evidence, Incident
 
 _lock = threading.Lock()
@@ -54,7 +61,18 @@ def _read_all() -> dict[str, Incident]:
     return incidents
 
 
-def _write_all(incidents: dict[str, Incident]) -> None:
+def current_version() -> str:
+    """Content hash of the registry file ("" when missing); OCC versions."""
+    return deploy.resolve_store_version(_records_path())
+
+
+def _write_all(
+    incidents: dict[str, Incident], expected: Optional[str] = None
+) -> None:
+    if expected is not None and deploy.resolve_store_version(_records_path()) != expected:
+        raise deploy.ConflictError(
+            "incidents registry changed under this write; retry the request"
+        )
     data_dir = config.get_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -77,17 +95,20 @@ def _write_all(incidents: dict[str, Incident]) -> None:
         except OSError:
             pass
         raise
+    deploy.sync_after_write()
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def create_incident(incident: Incident) -> Incident:
+def create_incident(
+    incident: Incident, expected: Optional[str] = None
+) -> Incident:
     with _lock:
         incidents = _read_all()
         incidents[incident.id] = incident
-        _write_all(incidents)
+        _write_all(incidents, expected)
     return incident
 
 
@@ -99,7 +120,9 @@ def list_incidents() -> list[Incident]:
     return sorted(_read_all().values(), key=lambda i: i.created_at, reverse=True)
 
 
-def update_commit_sha(incident_id: str, commit_sha: str) -> Optional[Incident]:
+def update_commit_sha(
+    incident_id: str, commit_sha: str, expected: Optional[str] = None
+) -> Optional[Incident]:
     with _lock:
         incidents = _read_all()
         incident = incidents.get(incident_id)
@@ -108,11 +131,16 @@ def update_commit_sha(incident_id: str, commit_sha: str) -> Optional[Incident]:
         incident.commit_sha = commit_sha
         incident.updated_at = _utcnow()
         incidents[incident_id] = incident
-        _write_all(incidents)
+        _write_all(incidents, expected)
     return incident
 
 
-def add_evidence(incident_id: str, evidence: Evidence, staged_path: Path) -> Evidence:
+def add_evidence(
+    incident_id: str,
+    evidence: Evidence,
+    staged_path: Path,
+    expected: Optional[str] = None,
+) -> Evidence:
     """Atomically move a staged upload into artifacts/ and record it."""
     artifacts = _artifacts_dir()
     artifacts.mkdir(parents=True, exist_ok=True)
@@ -127,7 +155,7 @@ def add_evidence(incident_id: str, evidence: Evidence, staged_path: Path) -> Evi
             incident.evidence.append(evidence)
             incident.updated_at = _utcnow()
             incidents[incident_id] = incident
-            _write_all(incidents)
+            _write_all(incidents, expected)
     except BaseException:
         try:
             os.unlink(final_path)
