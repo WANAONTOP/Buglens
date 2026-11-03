@@ -56,6 +56,22 @@ class SamParseError(ValueError):
     """SAM output_text does not follow the documented segmentation grammar."""
 
 
+class MetaInferenceError(Exception):
+    """A Meta model call failed, timed out, or returned an incomplete result."""
+
+
+@dataclass(frozen=True)
+class InferenceResult:
+    """One completed model call: text plus observed request metadata."""
+
+    model: str
+    text: str
+    status: str
+    latency_ms: int
+    attempts: int
+    usage: Optional[dict[str, Any]] = None
+
+
 @dataclass(frozen=True)
 class SamMatch:
     object_id: int
@@ -218,6 +234,142 @@ class MetaAdapter:
                 CheckResult(name="wonder", state="configured_untested"),
                 CheckResult(name="sam", state="configured_untested"),
             ],
+        )
+
+    def complete(
+        self,
+        model: str,
+        text: str,
+        images: Optional[list[tuple[str, str]]] = None,
+        max_output_tokens: int = 512,
+    ) -> InferenceResult:
+        """One bounded text completion (Spark/Wonder investigation calls).
+
+        ``images`` is ``[(mime_type, base64_png)]``; prompts come from the
+        caller and must already exclude credentials. Raises
+        :class:`MetaInferenceError` on transport failure, rejection, or an
+        incomplete result — never returns a fabricated completion.
+        """
+        if not self._api_key:
+            raise MetaInferenceError(f"{model} is not configured (META_API_KEY missing)")
+        content: list[dict[str, str]] = [{"type": "input_text", "text": text}]
+        for mime, payload in images or []:
+            content.append(
+                {"type": "input_image", "image_url": f"data:{mime};base64,{payload}"}
+            )
+        with self._client() as client:
+            outcome = bounded_request(
+                client,
+                "POST",
+                f"{self._base_url}/responses",
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                json_body={
+                    "model": model,
+                    "input": [{"role": "user", "content": content}],
+                    "max_output_tokens": max_output_tokens,
+                    "store": False,
+                },
+                secrets=self._secrets(),
+                timeout_s=config.INVESTIGATE_MODEL_TIMEOUT_S,
+                max_retries=config.PROVIDER_MAX_RETRIES,
+            )
+        if not outcome.ok:
+            raise MetaInferenceError(outcome.detail)
+        if outcome.status != 200:
+            raise MetaInferenceError(
+                sanitize(
+                    error_detail(outcome.status, outcome.body, f"{model} rejected the request"),
+                    self._secrets(),
+                )
+            )
+        status = outcome.body.get("status") if isinstance(outcome.body, dict) else None
+        result_text = _output_text(outcome.body)
+        if status != "completed" or not result_text.strip():
+            raise MetaInferenceError(
+                sanitize(
+                    f"{model} returned status {status!r} with {len(result_text)} output chars",
+                    self._secrets(),
+                )
+            )
+        usage = outcome.body.get("usage") if isinstance(outcome.body, dict) else None
+        return InferenceResult(
+            model=model,
+            text=result_text,
+            status=str(status),
+            latency_ms=outcome.latency_ms,
+            attempts=outcome.attempts,
+            usage=dict(usage) if isinstance(usage, dict) else None,
+        )
+
+    def segment(
+        self, concept: str, image: bytes, mime: str, *, frame_w: int, frame_h: int
+    ) -> tuple[list[SamMatch], InferenceResult]:
+        """Segment ``concept`` in one still frame; geometry validated.
+
+        Returns ``(matches, call_metadata)``. Zero matches is a normal
+        completed result (empty list, never an invented mask); malformed
+        geometry raises :class:`SamParseError`, call failure raises
+        :class:`MetaInferenceError`.
+        """
+        if not self._api_key:
+            raise MetaInferenceError(f"{SAM_MODEL} is not configured (META_API_KEY missing)")
+        image_b64 = base64.b64encode(image).decode("ascii")
+        with self._client() as client:
+            outcome = bounded_request(
+                client,
+                "POST",
+                f"{self._base_url}/responses",
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                json_body={
+                    "model": SAM_MODEL,
+                    "input": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": concept},
+                                {
+                                    "type": "input_image",
+                                    "image_url": f"data:{mime};base64,{image_b64}",
+                                },
+                            ],
+                        }
+                    ],
+                    "store": False,
+                },
+                secrets=self._secrets(),
+                timeout_s=config.INVESTIGATE_MODEL_TIMEOUT_S,
+                max_retries=config.PROVIDER_MAX_RETRIES,
+            )
+        if not outcome.ok:
+            raise MetaInferenceError(outcome.detail)
+        if outcome.status != 200:
+            raise MetaInferenceError(
+                sanitize(
+                    error_detail(outcome.status, outcome.body, f"{SAM_MODEL} rejected the request"),
+                    self._secrets(),
+                )
+            )
+        status = outcome.body.get("status") if isinstance(outcome.body, dict) else None
+        if status != "completed":
+            raise MetaInferenceError(
+                sanitize(f"{SAM_MODEL} returned status {status!r}", self._secrets())
+            )
+        text = _output_text(outcome.body)
+        matches = parse_sam_output(text, frame_w=frame_w, frame_h=frame_h)
+        usage = outcome.body.get("usage") if isinstance(outcome.body, dict) else None
+        return matches, InferenceResult(
+            model=SAM_MODEL,
+            text=text,
+            status=str(status),
+            latency_ms=outcome.latency_ms,
+            attempts=outcome.attempts,
+            usage=dict(usage) if isinstance(usage, dict) else None,
         )
 
     def smoke(self) -> ProviderReport:

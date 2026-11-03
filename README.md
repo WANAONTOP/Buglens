@@ -214,6 +214,35 @@ page shows runs, live status, events, and artifact downloads.
 Status: complete — backend suite passes (105) and the first live Modal
 run returned `REPRODUCED` at the published SHA (see NEW_WORK.md).
 
+## Investigation (Step 6, read-only — no patches)
+
+An investigation runs on a `done` / `REPRODUCED` reproduction whose SHA
+matches the incident pin and whose artifacts are complete; anything else
+is reported BLOCKED. It builds a stable evidence package (E-numbers over
+uploaded, baseline, broken-route, and control-route items), calls
+`muse-spark-1.3` on the broken/control frames, segments the concrete Pay
+button with `sam-3.1` (the transparent overlay is established by DOM and
+hit-testing, never by vision), maps DOM identities to source at the
+pinned commit (exact / inferred / unknown), and asks `muse-wonder-1.0`
+for ranked root-cause hypotheses with evidence refs and validated
+citations. One background job at a time; results persist across
+refresh/restart and appear in the incident detail page.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/incidents/{id}/investigations` | Start on a run (202; body `{"run_id"}`) |
+| GET | `/api/incidents/{id}/investigations` | List investigations for an incident |
+| GET | `/api/investigations/{inv_id}` | Full record: evidence, models, mappings |
+| POST | `/api/investigations/{inv_id}/cancel` | Request cancellation |
+
+Live result on run `ae35c096…`: Spark observed the enabled button with no
+visible cover; SAM boxed the button at (360,189)-(465,233), matching the
+DOM rect; `div#promo-overlay` mapped exact to
+`fixtures/storefront/public/checkout.html:36`; Wonder's top hypothesis
+names the transparent full-viewport interceptor with 11 supporting
+evidence refs and zero unvalidated citations. No status claims PATCHED,
+FIXED, or VERIFIED.
+
 ## Configuration
 
 `.env` holds local secrets (see `.env.example`). Never commit it.

@@ -102,6 +102,126 @@ export interface ReproSummary {
   updated_at: string
 }
 
+export type InvestigationState = 'queued' | 'running' | 'done' | 'blocked' | 'cancelled' | 'error'
+
+export interface EvidenceItem {
+  ref: string
+  origin: 'uploaded' | 'baseline' | 'broken' | 'control'
+  kind: string
+  route: string | null
+  artifact: string | null
+  summary: string
+  data: Record<string, unknown>
+}
+
+export interface ModelCall {
+  model: string
+  status: string
+  latency_ms: number
+  attempts: number
+  usage: Record<string, unknown> | null
+}
+
+export interface SparkResult {
+  call: ModelCall
+  frames: string[]
+  observations: string[]
+  hypotheses: string[]
+  raw_text: string
+  parsed: boolean
+  parse_note: string
+}
+
+export interface SamBox {
+  object_id: number
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  frame_w: number
+  frame_h: number
+  mask_h: number
+  mask_w: number
+}
+
+export interface SamResult {
+  call: ModelCall
+  concept: string
+  frame_ref: string
+  frame_artifact: string
+  frame_w: number
+  frame_h: number
+  matches: SamBox[]
+  note: string
+}
+
+export interface SourceMapping {
+  target: string
+  file: string | null
+  start_line: number | null
+  end_line: number | null
+  certainty: 'exact' | 'inferred' | 'unknown'
+  evidence_refs: string[]
+  note: string
+}
+
+export interface WonderHypothesis {
+  rank: number
+  cause: string
+  mechanism: string
+  supporting_evidence: string[]
+  conflicting_or_missing: string[]
+  locations: SourceMapping[]
+  repair_direction: string
+  unvalidated_citations: string[]
+}
+
+export interface WonderResult {
+  call: ModelCall
+  hypotheses: WonderHypothesis[]
+  raw_text: string
+  parsed: boolean
+  parse_note: string
+}
+
+export interface InvestigationEvent {
+  at: string
+  phase: string
+  message: string
+}
+
+export interface Investigation {
+  id: string
+  incident_id: string
+  run_id: string
+  repo: string
+  commit_sha: string
+  contract_hash: string
+  state: InvestigationState
+  detail: string
+  evidence: EvidenceItem[]
+  absent_evidence: string[]
+  spark: SparkResult | null
+  sam: SamResult | null
+  mappings: SourceMapping[]
+  wonder: WonderResult | null
+  events: InvestigationEvent[]
+  created_at: string
+  updated_at: string
+}
+
+export interface InvestigationSummary {
+  id: string
+  incident_id: string
+  run_id: string
+  commit_sha: string
+  state: InvestigationState
+  detail: string
+  hypothesis_count: number
+  created_at: string
+  updated_at: string
+}
+
 export interface IncidentCreatePayload {
   title: string
   observed_behavior: string

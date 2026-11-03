@@ -3,6 +3,8 @@ import type {
   Incident,
   IncidentCreatePayload,
   IncidentSummary,
+  Investigation,
+  InvestigationSummary,
   ReproRun,
   ReproSummary,
 } from './types'
@@ -130,6 +132,25 @@ export const api = {
       throw new ApiError(response.status, await parseErrorBody(response))
     }
     return response.blob()
+  },
+
+  startInvestigation(token: string, incidentId: string, runId: string): Promise<InvestigationSummary> {
+    return request(token, `/api/incidents/${incidentId}/investigations`, {
+      method: 'POST',
+      body: JSON.stringify({ run_id: runId }),
+    })
+  },
+
+  listInvestigations(token: string, incidentId: string): Promise<InvestigationSummary[]> {
+    return request(token, `/api/incidents/${incidentId}/investigations`)
+  },
+
+  getInvestigation(token: string, invId: string): Promise<Investigation> {
+    return request(token, `/api/investigations/${invId}`)
+  },
+
+  cancelInvestigation(token: string, invId: string): Promise<InvestigationSummary> {
+    return request(token, `/api/investigations/${invId}/cancel`, { method: 'POST' })
   },
 
   async downloadBlob(token: string, incidentId: string, evidenceId: string): Promise<Blob> {

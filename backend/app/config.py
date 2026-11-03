@@ -55,6 +55,21 @@ REPRO_DRIVER_TIMEOUT_S = 300.0
 REPRO_MAX_ARTIFACT_BYTES = 12 * 1024 * 1024
 REPRO_MAX_TOTAL_ARTIFACT_BYTES = 64 * 1024 * 1024
 
+# --- Step 6 investigation bounds --------------------------------------------
+# Sequential model calls per investigation: Spark (frames) + SAM (one object)
+# + Wonder (hypotheses). Token caps and timeouts bound time and cost; no
+# incident data or credentials ever enter a prompt beyond the listed fields.
+# Caps must cover hidden reasoning tokens too: observed responses spend
+# ~250-400 reasoning tokens inside max_output_tokens, so small caps return
+# status "incomplete" with zero text.
+INVESTIGATE_MAX_CONCURRENT = 1
+INVESTIGATE_JOB_TIMEOUT_S = 600.0
+INVESTIGATE_SPARK_MAX_TOKENS = 1600
+INVESTIGATE_WONDER_MAX_TOKENS = 2400
+INVESTIGATE_MAX_SOURCE_CHARS = 6000
+INVESTIGATE_MAX_EVIDENCE_ITEMS = 40
+INVESTIGATE_MODEL_TIMEOUT_S = 120.0
+
 
 def get_api_token() -> str:
     """Application API token from the environment (there is no default)."""

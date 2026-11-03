@@ -99,6 +99,20 @@ Acceptance checks:
 - [x] Live Modal run observed: `REPRODUCED` at the pinned SHA (recorded).
 - [x] No status claims verified or fixed.
 
+## Step 6 — Investigation and source mapping (M2, read-only)
+
+- Evidence package (E-refs) gated on done/REPRODUCED + complete artifacts.
+- Spark visual interpretation, SAM button segmentation, pinned-commit
+  source mapping (exact/inferred/unknown), Wonder ranked hypotheses.
+- No patch generation; no PATCHED/FIXED/VERIFIED status.
+
+Acceptance checks:
+
+- [x] Investigation endpoints, background job, and panel implemented.
+- [x] Live investigation done: Spark/SAM/Wonder real calls recorded.
+- [x] Overlay mapped exact to checkout.html:36; citations validated.
+- [x] Backend suite (116) and frontend build pass.
+
 ## M2 — Visual interpretation
 
 - muse-spark-1.3 describes the bug; sam-3.1 segments UI regions.
@@ -106,9 +120,9 @@ Acceptance checks:
 
 Acceptance checks:
 
-- [ ] Interpretation stored per run with model name and version.
-- [ ] At least one DOM node linked to each reported region.
-- [ ] Unmapped regions reported explicitly, never silently dropped.
+- [x] Interpretation stored per run with model name and version.
+- [x] At least one DOM node linked to each reported region.
+- [x] Unmapped regions reported explicitly, never silently dropped.
 
 ## M3 — Reproduction
 

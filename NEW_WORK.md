@@ -284,6 +284,75 @@ Verification results (2026-11-03):
   from an earlier session still holds port 8000; it was left running
   and the live run used port 8001. Ports 8001 free afterwards.
 
+## Step 5 checkpoint (2026-11-03)
+
+- Reviewed the 20 uncommitted Step 5 files (9 modified, 11 new);
+  `.env`, `backend/data/`, `__pycache__/`, `frontend/dist/` verified
+  ignored; secret scan clean (only known fake test constants).
+- Committed as `00873c50cfbadb4a3412aa22e4cfb2378f5dbe0f` (no amend, no
+  push). The completed incident keeps its pinned baseline
+  `9174a4607269282babff247f04fe6418d0bcc8ac`; run `ae35c096…` intact
+  (done/REPRODUCED, 10 artifacts, 23 events, contract `67f33335f015…`).
+- Port 8000's holder was confirmed as this project's stale backend (PID
+  17920, started 01:04, predates Step 5) and replaced with a fresh
+  server; frontend (port 5173) serves the React root and points at the
+  current backend (`/health` ok, repro routes in OpenAPI). No unrelated
+  processes touched. In-browser rendering checks remain pending (no
+  browser automation here).
+
+## Step 6 — investigation and source mapping (2026-11-03, read-only)
+
+Changes (uncommitted):
+
+- `backend/app/providers/meta.py`: `complete()` (Spark/Wonder, optional
+  image parts) and `segment()` (SAM + validated geometry) with model ID,
+  latency, attempts, and observed usage; `config.py` investigation
+  bounds (concurrency 1, token caps, timeouts).
+- `backend/app/investigate/`: `evidence.py` (REPRODUCED + artifacts +
+  provenance gate, E-numbered package over uploaded/baseline/broken/
+  control origins, explicit absence notes), `mapping.py` (pinned-SHA
+  source search, exact/inferred/unknown, citation validation,
+  multi-line tag aware), `inference.py` (prompt builders, defensive
+  Spark/Wonder parsing — malformed output kept raw, never coerced),
+  `runner.py` (sequential stages with cancel/deadline, honest
+  blocked/error states), `store.py`/`jobs.py` (locked per-record
+  persistence, one worker, reconcile).
+- `backend/app/routes_investigate.py` + `main.py`: start/list/get/cancel
+  (app-authenticated; run must belong to the incident).
+- `backend/tests/test_investigate.py`: 11 mocked tests (gate matrix,
+  malformed output, empty/out-of-bounds segmentation, invalid
+  citations, wrong commit, unauthorized, jobs).
+- Frontend: `InvestigationPanel.tsx` (run picker gated on
+  done/REPRODUCED, start/cancel, polling, frame + SAM overlay,
+  observations, mappings, hypotheses, evidence list), API client +
+  types, frame CSS. No PATCHED/FIXED/VERIFIED vocabulary.
+
+Verification results (2026-11-03):
+
+- `pytest backend\tests`: 116 passed. `npm run build`: success.
+- Live investigation on run `ae35c096…` (incident `7a7ffb5e…`): `done`.
+  Spark (11.3s): 4 observations + 4 causal guesses, parsed — notes the
+  button looks enabled with no visible cover. SAM (2.1s): 1 match,
+  box (360,189)-(465,233) on the 1280x800 frame, matching the DOM
+  button rect; overlay deliberately not segmented (opacity 0).
+  Mappings: `div#promo-overlay` exact
+  `fixtures/storefront/public/checkout.html:36` (independently
+  verified at the pinned SHA); `button#pay-button` inferred
+  (multi-line definitions in both checkout files). Wonder (16.7s):
+  1 hypothesis, parsed — transparent full-viewport interceptor,
+  mechanism citing E7/E8/E9/E11, 11 supporting refs, validated
+  location `checkout.html:36`, zero unvalidated citations, repair
+  direction without a diff.
+- Two honest failures preceded the green run: Spark cap 800 returned
+  `incomplete` (hidden reasoning tokens consume `max_output_tokens`;
+  caps raised to 1600/2400), and single-line-only element search cited
+  a comment for the button (fixed to multi-line tag spans + test).
+- No supplementary capture was needed: geometry, styles, hit-testing,
+  console output, annotations, and frames were all present; only
+  per-action timestamps are absent (noted explicitly; phase timing in
+  run events + traces).
+- No patches generated or applied. Step 6 work is uncommitted.
+
 ## Later steps
 
 Append one section per milestone with files touched and verification results.
