@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ApiError, api } from './api'
 import type { Incident } from './types'
 import EvidenceCapture, { type LocalItem } from './EvidenceCapture'
+import ReproPanel from './ReproPanel'
 
 interface Props {
   token: string
@@ -127,6 +128,8 @@ export default function IncidentDetail({ token, incident, onChanged, onClose, in
           {error}
         </p>
       )}
+
+      <ReproPanel token={token} incident={incident} />
 
       <EvidenceCapture
         key={incident.id}

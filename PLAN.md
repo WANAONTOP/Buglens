@@ -83,6 +83,22 @@ Acceptance checks:
 - [x] Secret scan clean (6 known fake-fixture hits reviewed); initial commit
   created locally, push left to the user.
 
+## Step 5 — Modal reproduction (M3)
+
+- Resolve `main` to a pinned SHA; freeze + hash the validated contract.
+- Modal sandbox runner (Linux Chromium): install, serve, drive both routes,
+  pull evidence, classify `REPRODUCED` / `NEEDS_REPRODUCTION` / `BLOCKED`.
+- Authenticated start/status/cancel/artifact endpoints; one background job
+  at a time; frontend panel with live polling and downloads.
+
+Acceptance checks:
+
+- [x] Repro endpoints, job runner, and results panel implemented.
+- [x] Frontend build (tsc + vite) passes with the new panel.
+- [x] Backend suite passes including `backend/tests/test_repro.py` (105).
+- [x] Live Modal run observed: `REPRODUCED` at the pinned SHA (recorded).
+- [x] No status claims verified or fixed.
+
 ## M2 — Visual interpretation
 
 - muse-spark-1.3 describes the bug; sam-3.1 segments UI regions.

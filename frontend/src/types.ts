@@ -55,6 +55,53 @@ export interface IncidentSummary {
   updated_at: string
 }
 
+export type ReproState = 'queued' | 'running' | 'done' | 'cancelled' | 'error'
+
+export type ReproVerdict = 'REPRODUCED' | 'NEEDS_REPRODUCTION' | 'BLOCKED'
+
+export interface ReproEvent {
+  at: string
+  phase: string
+  message: string
+}
+
+export interface ReproArtifact {
+  name: string
+  stored_filename: string
+  content_type: string
+  size_bytes: number
+  sha256: string
+}
+
+export interface ReproRun {
+  id: string
+  incident_id: string
+  repo: string
+  commit_sha: string
+  contract_hash: string
+  state: ReproState
+  verdict: ReproVerdict | null
+  detail: string
+  events: ReproEvent[]
+  artifacts: ReproArtifact[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ReproSummary {
+  id: string
+  incident_id: string
+  repo: string
+  commit_sha: string
+  contract_hash: string
+  state: ReproState
+  verdict: ReproVerdict | null
+  detail: string
+  artifact_count: number
+  created_at: string
+  updated_at: string
+}
+
 export interface IncidentCreatePayload {
   title: string
   observed_behavior: string

@@ -40,6 +40,21 @@ PROVIDER_MAX_RETRIES = 2
 # monkeypatch it.
 MODAL_SMOKE_TIMEOUT_S = 180.0
 
+# --- Step 5 Modal reproduction bounds -----------------------------------------
+# All referenced dynamically as ``config.REPRO_*`` so tests can monkeypatch.
+REPRO_SANDBOX_IMAGE = "node:22-slim"
+REPRO_SANDBOX_CPU = 1.0
+REPRO_SANDBOX_MEMORY_MB = 2048
+REPRO_SANDBOX_TIMEOUT_S = 900.0
+REPRO_JOB_TIMEOUT_S = 1200.0
+REPRO_MAX_CONCURRENT = 1
+REPRO_INSTALL_TIMEOUT_S = 300.0
+REPRO_BROWSER_INSTALL_TIMEOUT_S = 420.0
+REPRO_SERVER_WAIT_S = 60.0
+REPRO_DRIVER_TIMEOUT_S = 300.0
+REPRO_MAX_ARTIFACT_BYTES = 12 * 1024 * 1024
+REPRO_MAX_TOTAL_ARTIFACT_BYTES = 64 * 1024 * 1024
+
 
 def get_api_token() -> str:
     """Application API token from the environment (there is no default)."""

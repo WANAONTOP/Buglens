@@ -187,6 +187,33 @@ commands will run only inside the Modal sandbox). The fixture runner is
 separate from the BugLens app test suite: `pytest backend\tests` must stay
 green regardless of the fixture's expected failure.
 
+## Modal reproduction (Step 5)
+
+Target: `WANAONTOP/Buglens`, branch `main`, app `fixtures/storefront/`,
+manifest repo-root `.buglens.json`. Starting a reproduction resolves `main`
+to its immutable commit SHA via GitHub, pins the SHA on the incident,
+validates + freezes the contract (hash stored on the run), then executes it
+as a background job inside a Modal sandbox (Linux Playwright Chromium —
+never msedge/Windows paths). One run at a time; extra starts get HTTP 429.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/incidents/{id}/reproductions` | Freeze + start (202); pins SHA |
+| GET | `/api/incidents/{id}/reproductions` | List runs for an incident |
+| GET | `/api/reproductions/{run_id}` | Run state, verdict, events, artifacts |
+| POST | `/api/reproductions/{run_id}/cancel` | Request cancellation |
+| GET | `/api/reproductions/{run_id}/artifacts` | List fetched artifacts |
+| GET | `/api/reproductions/{run_id}/artifacts/{name}/download` | Download one artifact |
+
+Verdicts are evaluation-only: `REPRODUCED` (blocked click observed +
+control confirmed), `NEEDS_REPRODUCTION` (failure not established), or
+`BLOCKED` (setup/browser/evidence unavailable). No status claims the bug is
+verified or fixed. Credentials never enter the sandbox; the incident detail
+page shows runs, live status, events, and artifact downloads.
+
+Status: complete — backend suite passes (105) and the first live Modal
+run returned `REPRODUCED` at the published SHA (see NEW_WORK.md).
+
 ## Configuration
 
 `.env` holds local secrets (see `.env.example`). Never commit it.
@@ -194,8 +221,10 @@ green regardless of the fixture's expected failure.
 ## Project layout
 
 - `frontend/src/` — React + TypeScript + Vite app (incident form, evidence
-  capture, screen recorder).
+  capture, screen recorder, Modal reproduction panel).
 - `backend/app/` — FastAPI service (`/health`, `/api/*`).
+- `backend/app/repro/` — published-source resolution, contract freeze,
+  Modal runner, background jobs, run store.
 - `backend/tests/` — backend test suite.
 - `AGENTS.md` — binding engineering rules.
 - `PLAN.md` — milestones and acceptance checks.

@@ -1,4 +1,11 @@
-import type { Evidence, Incident, IncidentCreatePayload, IncidentSummary } from './types'
+import type {
+  Evidence,
+  Incident,
+  IncidentCreatePayload,
+  IncidentSummary,
+  ReproRun,
+  ReproSummary,
+} from './types'
 
 export const BACKEND_URL = 'http://127.0.0.1:8000'
 
@@ -91,6 +98,38 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ commit_sha: commitSha }),
     })
+  },
+
+  startReproduction(token: string, incidentId: string): Promise<ReproSummary> {
+    return request(token, `/api/incidents/${incidentId}/reproductions`, { method: 'POST' })
+  },
+
+  listReproductions(token: string, incidentId: string): Promise<ReproSummary[]> {
+    return request(token, `/api/incidents/${incidentId}/reproductions`)
+  },
+
+  getReproduction(token: string, runId: string): Promise<ReproRun> {
+    return request(token, `/api/reproductions/${runId}`)
+  },
+
+  cancelReproduction(token: string, runId: string): Promise<ReproSummary> {
+    return request(token, `/api/reproductions/${runId}/cancel`, { method: 'POST' })
+  },
+
+  async downloadReproArtifact(token: string, runId: string, name: string): Promise<Blob> {
+    let response: Response
+    try {
+      response = await fetch(
+        `${BACKEND_URL}/api/reproductions/${runId}/artifacts/${encodeURIComponent(name)}/download`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+    } catch (err) {
+      throw new ApiError(0, err instanceof Error ? err.message : 'Network error')
+    }
+    if (!response.ok) {
+      throw new ApiError(response.status, await parseErrorBody(response))
+    }
+    return response.blob()
   },
 
   async downloadBlob(token: string, incidentId: string, evidenceId: string): Promise<Blob> {

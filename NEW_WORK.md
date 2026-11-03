@@ -215,6 +215,75 @@ Verification results (2026-11-03):
 - Follow-up: Step 4 documentation committed separately from the initial
   source commit, which is preserved as-is (no amend, no force-push).
 
+## Step 5 — Modal reproduction (2026-11-03)
+
+Target: `WANAONTOP/Buglens` @ `main` =
+`9174a4607269282babff247f04fe6418d0bcc8ac`, app
+`fixtures/storefront/`, manifest repo-root `.buglens.json`.
+
+Changes (uncommitted; HEAD stays at the published baseline `9174a46`):
+
+- `backend/app/repro/`: `github_source.py` (ref→SHA, tree, blobs over
+  GitHub REST, sanitized), `contract.py` (validate, resolve, reject
+  traversal/symlink escapes, freeze + sha256), `store.py` (per-run
+  records, events, artifacts, frozen contract), `jobs.py` (one worker,
+  cancellation, orphan reconcile), `runner.py` (Modal pipeline: tarball
+  fetch at the pinned SHA, manifest-hash fidelity check, frozen
+  install, Linux Chromium, readiness wait, driver, bounded base64
+  artifact pull, server kill, sandbox terminate, server-side classify),
+  `driver.cjs` (both routes, hit-testing, occlusion, confirmation).
+- `backend/app/routes_repro.py` + `main.py` wiring: start (202, pins
+  SHA), list, status, cancel, artifact list/download — all
+  app-authenticated. `config.py`: `REPRO_*` bounds (cpu/mem/timeouts,
+  artifact budgets, concurrency 1).
+- `backend/tests/test_repro.py`: 12 tests (freeze accept/reject matrix,
+  classify matrix, full fake-Modal pipeline with secret isolation +
+  bounds assertions, 429 capacity, cancel, reconcile, store, GitHub
+  units). Fixed while writing: two `typing` import typos, a positional
+  ref/token mix-up (now `resolve_ref_sha`), symlink-target keying.
+- Frontend: `ReproPanel.tsx` (start/cancel, 2s polling, verdict badges,
+  events, artifact downloads) wired into `IncidentDetail.tsx`; API
+  client + types; three verdict badge styles. Vocabulary is
+  evaluation-only; nothing claims verified or fixed.
+
+Verification results (2026-11-03):
+
+- `npm run build` (tsc + vite): success with the new panel.
+- `node --check`: `reproduce.mjs`, `server.js`, `driver.cjs` all parse.
+- `pytest backend\tests`: 105 passed (93 existing + 12 new). First run
+  caught three real bugs, all fixed: `routes_repro.py` used
+  subpackage-relative imports at app level (ImportError); runner
+  `_REPO_RE` had a doubled backslash that rejected any repo containing
+  "s"; lock-free run-record reads raced worker writes (Windows
+  PermissionError) — reads now take the store lock.
+- Live Modal reproduction against the published `main`
+  (`9174a4607269282babff247f04fe6418d0bcc8ac`, verified read-only
+  before the run): verdict `REPRODUCED`. Run `ae35c096…` (incident
+  `7a7ffb5e…`, SHA pinned on the incident, contract
+  `67f33335f015…`): 23 events over ~2 minutes — freeze, volume upload,
+  sandbox create, tarball fetch, manifest-hash fidelity match, install,
+  Chromium ready, server ready, both routes driven, 10 artifacts
+  fetched (`result.json`, before/after PNGs, both traces, driver +
+  server + run logs), sandbox terminated. Broken route: button present,
+  center hit-test misses the button (`div#promo-overlay` intercepts),
+  no click, no confirmation. Control: clicked,
+  `Order confirmed: #BL-0001`. Two earlier live attempts failed
+  honestly first (`Image.from_dockerhub` does not exist in Modal
+  1.6.3 → `from_registry`; `exec` timeout must be int; tarball fetch
+  switched from curl — absent in `node:22-slim` — to node).
+  Credentials never entered the sandbox. Nothing claims verified/fixed.
+- Local browser rehearsal: not re-run here (sandbox denies all listen
+  sockets: `EACCES` on 127.0.0.1:4103 and :18080). Prior observed
+  matrix stands: broken `FAIL_BLOCKED`, control `PASS`.
+- `git status`: only intended Step 5 files changed/added; `dist/`
+  ignored; no scratch left behind. Step 5 work is uncommitted; HEAD
+  stays at the published baseline.
+- Environment notes: the venv Python is healthy — the earlier "no
+  interpreter" failure was the tool sandbox blocking the Store shim;
+  approved unsandboxed runs work. A stale BugLens backend (PID 17920)
+  from an earlier session still holds port 8000; it was left running
+  and the live run used port 8001. Ports 8001 free afterwards.
+
 ## Later steps
 
 Append one section per milestone with files touched and verification results.

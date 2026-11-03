@@ -240,6 +240,21 @@
   color: #174a7c;
 }
 
+.badge-REPRODUCED {
+  background: #d9ecd9;
+  color: #1e5e28;
+}
+
+.badge-NEEDS_REPRODUCTION {
+  background: #e2e2e2;
+  color: #333;
+}
+
+.badge-BLOCKED {
+  background: #f5e6c4;
+  color: #6b4e00;
+}
+
 .detail-header {
   display: flex;
   align-items: center;
