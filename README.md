@@ -377,10 +377,13 @@ Live website (Step 13):
 https://frontend-jade-rho-52.vercel.app
 ```
 
-Sign-in: open the website, paste the `BUGLENS_API_TOKEN` value from
-your local `.env` into "Paste API token", choose "Save token". The
-token stays in that tab only; "Clear" removes it and gates access
-again. Never put tokens in `VITE_*` variables.
+Sign-in: open the website — the "Connect to workspace" dialog opens
+automatically when signed out. Paste the `BUGLENS_API_TOKEN` value
+from your local `.env` into "Access token" and choose "Connect". The
+token is validated against the backend and kept only in that tab's
+session storage; Settings holds sign-out, token change, and backend
+diagnostics. Invalid tokens reopen the dialog. Never put tokens in
+`VITE_*` variables.
 
 The production bundle sets `VITE_BUGLENS_API_URL` to the backend
 URL at build time and refuses to load without it (no localhost
@@ -395,6 +398,24 @@ a missing `/favicon.ico` (404). Remote Meta/Baseten credentials are
 not configured: `/api/providers/status` reports `not_configured`
 with setup guidance and no secret values; no model, verification,
 or publication calls ran in this step.
+
+UI redeploy (commit `e921b9d`, Vercel deployment
+`frontend-6s29z15t6`, same production hostname): redesigned
+Reports/Investigation workspace with per-item upload states
+(Preparing → Ready → Uploading → Uploaded/failed), upload timeout +
+cancel, finalize indicator, wizard double-save guard. Deployed via a
+fresh remote build with `--build-env VITE_BUGLENS_API_URL=<modal
+backend>` (no project env changes; `vercel build` is unusable on this
+machine — EPERM symlinking its builder cache). Live bundle verified:
+Modal URL baked, zero secret values/names. Hosted checks passed:
+sign-in incl. wrong-token 401 handling, existing Step 14 demo (7/7
+gates, PR #2 link), one "Hosted UI test" incident with screenshot
+upload + refresh persistence, desktop/mobile overflow, settings,
+navigation. No paid jobs, approvals, PRs, or backend redeploy.
+Screen-recording acceptance passed locally and on hosted (observed
+9.0s take → 201 → byte-exact retrieval → refresh persistence; an
+earlier instant-stop take produced a 110B file the UI correctly
+flags as needing attention).
 
 What exists: `backend/modal_app.py` (Modal App `buglens-ai`: one
 `max_containers=1` ASGI function plus `run_repro_worker`,

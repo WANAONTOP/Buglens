@@ -970,3 +970,44 @@ model calls, verifications, or PRs in this step.
 ## Later steps
 
 Append one section per milestone with files touched and verification results.
+
+## UI redeploy — upload states + production release (LIVE)
+
+Commit `e921b9d` on `step12/deploy-prep` (6 files: `api.ts`,
+`EvidenceCapture.tsx`, `App.tsx`, `NewReportWizard.tsx`, `App.css`,
+`frontend/.gitignore`; diff secret-scan clean). Fixes from the
+recording/upload investigation: per-item Preparing/Ready/Uploading
+status, ✓-notice only after the server's 201, XHR 120s timeout with
+Cancel upload, backend-aware network errors, 401 re-auth on upload,
+"Finalizing recording…" indicator, wizard double-save guard, incident
+remount key.
+
+Deploy: Vercel CLI via `npx` (not installed; no stored login — user
+supplied a one-time token file, used via env, deleted after).
+Project has no env vars (unchanged); `vercel build` fails locally
+(EPERM symlink into its builder cache), so deployed with
+`vercel deploy --prod --build-env VITE_BUGLENS_API_URL=<modal>`:
+fresh remote build, deployment `frontend-6s29z15t6`, aliased to the
+existing `https://frontend-jade-rho-52.vercel.app`. Stale local
+`.vercel/output` removed, never deployed. Live bundle bytes verified:
+Modal URL active (only localhost string is the dead dev fallback),
+0 secret values, 0 credential names. Backend untouched (no CORS or
+secret changes).
+
+Hosted verification (headless Edge, sanitized logs): 18/18 functional
+checks — landing + auto-open Connect dialog, wrong-token 401 message,
+real sign-in, Step 14 demo (7/7 gate cards, `checkout.html` diff,
+PR #2 link), refresh persistence, Settings Modal URL, one "Hosted UI
+test" incident `c33a5948…` with screenshot upload + refresh
+persistence, desktop/mobile zero page overflow (mobile tab strip is
+swipeable, verified reachable). Only 4xx/log noise: the intentional
+wrong-token 401 and the known benign favicon 404. Screenshots
+inspected: no clipping. One transient Modal load timeout passed on
+retry. No paid jobs, approvals, PRs, merges, or pushes (latest source
+is local-only on `step12/deploy-prep`; main and PR #1/#2 untouched).
+Hosted screen recording PASSED on retake (first take was stopped
+instantly: 110B header-only file, correctly flagged "Needs
+attention" in the UI). Observed OS picker → 9.0s recording →
+preview metadata 1246×800 → POST → 201 in ~7s → byte-exact
+retrieval (1334245/1334245) → all 3 items present after refresh.
+Only log noise: favicon 404 + benign preview-blob aborts.

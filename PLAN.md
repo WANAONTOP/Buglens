@@ -365,3 +365,16 @@ Acceptance checks:
 - [x] Suite line quotes collected/failed/identical-pre-existing
   (91 passed = 93 − 2, stated via the recorded counts).
 - [ ] Checkpoint the notes + PR-lookup fix (deployed, uncommitted).
+
+## UI redeploy — upload states + production release
+
+- [x] Commit `e921b9d`: upload states, timeout/cancel, finalize
+  indicator, save guard, remount key; diff secret-scan clean.
+- [x] Fresh production deploy `frontend-6s29z15t6` to the existing
+  hostname; live bundle verified (Modal URL, zero secrets).
+- [x] Hosted checks: sign-in + 401 handling, Step 14 demo gates/PR,
+  one "Hosted UI test" upload + persistence, desktop/mobile layout.
+- [x] No backend redeploy, paid jobs, approvals, PRs, or pushes.
+- [x] Hosted screen-recording check (observed 9.0s take → 201 →
+  byte-exact retrieval → refresh persistence).
+- [ ] Push `step12/deploy-prep` so the latest source is public (main/PRs untouched).
