@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import {
   ApiError,
@@ -6,10 +6,13 @@ import {
   api,
   clearStoredToken,
   getStoredToken,
+  onUnauthorized,
   setStoredToken,
 } from './api'
 import type { Incident, IncidentSummary } from './types'
-import NewReportForm from './NewReportForm'
+import ConnectDialog from './ConnectDialog'
+import SettingsDialog from './SettingsDialog'
+import NewReportWizard from './NewReportWizard'
 import IncidentList from './IncidentList'
 import IncidentDetail from './IncidentDetail'
 import type { LocalItem } from './EvidenceCapture'
@@ -18,6 +21,8 @@ type BackendState =
   | { kind: 'checking' }
   | { kind: 'connected'; service: string; latencyMs: number }
   | { kind: 'unreachable'; detail: string }
+
+type View = 'reports' | 'investigation'
 
 const INCIDENT_HASH = /^#incident=([0-9a-f]{32})$/
 
@@ -29,7 +34,12 @@ function incidentIdFromHash(): string | null {
 function App() {
   const [backend, setBackend] = useState<BackendState>({ kind: 'checking' })
   const [token, setToken] = useState(getStoredToken())
-  const [tokenDraft, setTokenDraft] = useState(getStoredToken())
+  const [connectOpen, setConnectOpen] = useState(() => getStoredToken().length === 0)
+  const [connectNotice, setConnectNotice] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [view, setView] = useState<View>(() => (incidentIdFromHash() ? 'investigation' : 'reports'))
+  const [navNotice, setNavNotice] = useState<string | null>(null)
   const [incidents, setIncidents] = useState<IncidentSummary[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(incidentIdFromHash())
   const [selected, setSelected] = useState<Incident | null>(null)
@@ -121,6 +131,7 @@ function App() {
     const hashed = incidentIdFromHash()
     if (hashed) {
       setSelectedId(hashed)
+      setView('investigation')
       void loadSelected(token, hashed)
     }
   }, [token, loadList, loadSelected])
@@ -135,27 +146,60 @@ function App() {
       setCarryover(null)
       setSelectedId(hashed)
       if (hashed && token) {
+        setView('investigation')
         void loadSelected(token, hashed)
       } else {
         setSelected(null)
+        setView('reports')
       }
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [token, loadSelected, selectedId])
 
-  function saveToken(event: React.FormEvent): void {
-    event.preventDefault()
-    setStoredToken(tokenDraft.trim())
-    setToken(tokenDraft.trim())
+  // Mirror for the global 401 handler, which outlives render closures.
+  const tokenRef = useRef(token)
+  tokenRef.current = token
+
+  function clearProtectedState(): void {
+    setIncidents([])
+    setSelectedId(null)
+    setSelected(null)
+    setCarryover(null)
+    setError(null)
+  }
+
+  // Invalid/expired credentials: drop the session, clear protected data, and
+  // reopen the connect dialog. Network failures (status 0) never land here.
+  useEffect(
+    () =>
+      onUnauthorized(() => {
+        if (!tokenRef.current) return
+        clearStoredToken()
+        tokenRef.current = ''
+        setToken('')
+        clearProtectedState()
+        setSettingsOpen(false)
+        setWizardOpen(false)
+        setConnectNotice('The session was rejected by the backend (401). Sign in again.')
+        setConnectOpen(true)
+      }),
+    [],
+  )
+
+  function handleConnected(nextToken: string): void {
+    setStoredToken(nextToken)
+    setToken(nextToken)
+    setConnectNotice(null)
+    setConnectOpen(false)
   }
 
   function clearToken(): void {
     clearStoredToken()
-    setTokenDraft('')
     setToken('')
-    setSelectedId(null)
-    setSelected(null)
+    clearProtectedState()
+    setWizardOpen(false)
+    setView('reports')
     window.location.hash = ''
   }
 
@@ -164,6 +208,8 @@ function App() {
     setCarryover(null)
     setSelectedId(id)
     setSelected(null)
+    setView('investigation')
+    setNavNotice(null)
     void loadSelected(token, id)
   }
 
@@ -172,9 +218,26 @@ function App() {
     setCarryover(null)
     setSelectedId(null)
     setSelected(null)
+    setView('reports')
+  }
+
+  function goToReports(): void {
+    setNavNotice(null)
+    closeIncident()
+  }
+
+  function goToInvestigation(): void {
+    if (selectedId) {
+      setNavNotice(null)
+      setView('investigation')
+      if (!selected) void loadSelected(token, selectedId)
+      return
+    }
+    setNavNotice('Select a report first — the Investigation page shows one open report.')
   }
 
   function handleSaved(incident: Incident, leftoverItems: LocalItem[]): void {
+    setWizardOpen(false)
     void loadList(token)
     selectIncident(incident.id)
     setCarryover(leftoverItems.length > 0 ? { incidentId: incident.id, items: leftoverItems } : null)
@@ -185,109 +248,162 @@ function App() {
     void loadList(token)
   }
 
+  function openConnect(): void {
+    setConnectNotice(null)
+    setConnectOpen(true)
+  }
+
+  const investigating = view === 'investigation' && (selectedId !== null || selected !== null)
+
   return (
-    <main className="page">
-      <h1>BugLens AI</h1>
-      <p className="subtitle">Reproduce, diagnose, verify, and publish UI bug fixes</p>
-
-      <section className="status-card" aria-live="polite">
-        <div className="status-row">
-          <span className={`dot dot-${backend.kind}`} aria-hidden="true" />
-          <h2>
-            {backend.kind === 'checking' && 'Checking backend…'}
-            {backend.kind === 'connected' && 'Backend connected'}
-            {backend.kind === 'unreachable' && 'Backend unreachable'}
-          </h2>
-        </div>
-
-        {backend.kind === 'connected' && (
-          <dl>
-            <dt>Service</dt>
-            <dd>{backend.service}</dd>
-            <dt>Health endpoint</dt>
-            <dd>{`${BACKEND_URL}/health`}</dd>
-            <dt>Latency</dt>
-            <dd>{backend.latencyMs} ms</dd>
-          </dl>
-        )}
-
-        {backend.kind === 'unreachable' && (
-          <p className="detail">
-            Could not reach <code>{`${BACKEND_URL}/health`}</code>. {backend.detail}
-          </p>
-        )}
-
-        <button type="button" onClick={() => void checkBackend()}>
-          Retry connection
-        </button>
-      </section>
-
-      <section className="card">
-        <h2>API token</h2>
-        <p className="hint">
-          Incident and evidence endpoints require the server&apos;s BUGLENS_API_TOKEN. It stays in
-          this tab&apos;s session storage and is sent only to the backend above.
-        </p>
-        <form className="token-form" onSubmit={saveToken}>
-          <input
-            type="password"
-            value={tokenDraft}
-            onChange={(e) => setTokenDraft(e.target.value)}
-            placeholder="Paste API token"
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <button type="submit">Save token</button>
+    <>
+      <header className="topbar">
+        <div className="topbar-inner">
+          <button type="button" className="brand" onClick={goToReports} aria-label="BugLens home">
+            <span className="brand-icon" aria-hidden="true">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <circle cx="7" cy="7" r="4" />
+                <path d="M10.2 10.2L14 14" />
+              </svg>
+            </span>
+            <span className="wordmark">BugLens</span>
+            <span className="ai-badge">AI</span>
+          </button>
           {token && (
-            <button type="button" onClick={clearToken}>
-              Clear
-            </button>
+            <nav className="topnav" aria-label="Pages">
+              <button
+                type="button"
+                className={view === 'reports' ? 'nav-btn nav-active' : 'nav-btn'}
+                aria-current={view === 'reports' ? 'page' : undefined}
+                onClick={goToReports}
+              >
+                Reports
+              </button>
+              <button
+                type="button"
+                className={view === 'investigation' ? 'nav-btn nav-active' : 'nav-btn'}
+                aria-current={view === 'investigation' ? 'page' : undefined}
+                onClick={goToInvestigation}
+              >
+                Investigation
+              </button>
+            </nav>
           )}
-        </form>
-        {token && backend.kind === 'connected' && <p className="hint">Token saved for this tab.</p>}
-      </section>
+          <div className="topbar-spacer" />
+          <div className="status-pill" aria-live="polite">
+            <span className={`dot dot-${backend.kind}`} aria-hidden="true" />
+            <span>
+              {backend.kind === 'checking' && 'Checking…'}
+              {backend.kind === 'connected' && token && 'Connected'}
+              {backend.kind === 'connected' && !token && 'Backend OK'}
+              {backend.kind === 'unreachable' && 'Offline'}
+            </span>
+          </div>
+          <div className="topbar-actions">
+            {token ? (
+              <button type="button" onClick={() => setSettingsOpen(true)}>
+                Settings
+              </button>
+            ) : (
+              <button type="button" className="btn-primary" onClick={openConnect}>
+                Connect
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
 
-      {!token ? (
-        <p className="hint">Save the API token to report and open incidents.</p>
-      ) : selectedId || selected ? (
-        <>
-          {loading && !selected && <p className="hint">Loading incident…</p>}
-          {selected && (
-            <IncidentDetail
+      <main className="page">
+        {connectOpen && (
+          <ConnectDialog
+            notice={connectNotice}
+            onConnected={handleConnected}
+            onClose={() => setConnectOpen(false)}
+          />
+        )}
+        {settingsOpen && token && (
+          <SettingsDialog
+            backend={backend}
+            onRetryBackend={() => void checkBackend()}
+            onSaveToken={handleConnected}
+            onSignOut={clearToken}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
+        {wizardOpen && token && (
+          <NewReportWizard
+            token={token}
+            onSaved={handleSaved}
+            onClose={() => setWizardOpen(false)}
+          />
+        )}
+
+        {!token ? (
+          <section className="card">
+            <h2>Find and fix UI bugs</h2>
+            <p className="hint">Capture the issue. Review the diagnosis. Verify the fix.</p>
+            <button type="button" className="btn btn-primary" onClick={openConnect}>
+              Connect to workspace
+            </button>
+          </section>
+        ) : investigating ? (
+          <>
+            {loading && !selected && <p className="hint">Loading report…</p>}
+            {selected && (
+              <IncidentDetail
+                token={token}
+                incident={selected}
+                onChanged={handleChanged}
+                onClose={closeIncident}
+                initialItems={
+                  carryover && carryover.incidentId === selected.id ? carryover.items : undefined
+                }
+              />
+            )}
+            {error && (
+              <p className="error" role="alert">
+                {error}{' '}
+                <button type="button" onClick={closeIncident}>
+                  Back to reports
+                </button>
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="hero">
+              <div>
+                <h2>Find and fix UI bugs</h2>
+                <p>Capture the issue. Review the diagnosis. Verify the fix.</p>
+              </div>
+              <button type="button" className="btn btn-primary" onClick={() => setWizardOpen(true)}>
+                + New report
+              </button>
+            </div>
+            {navNotice && (
+              <p className="hint" role="status">
+                {navNotice}
+              </p>
+            )}
+            {loading && <p className="hint">Loading reports…</p>}
+            {error && (
+              <p className="error" role="alert">
+                {error}{' '}
+                <button type="button" onClick={() => void loadList(token)}>
+                  Retry
+                </button>
+              </p>
+            )}
+            <IncidentList
               token={token}
-              incident={selected}
-              onChanged={handleChanged}
-              onClose={closeIncident}
-              initialItems={
-                carryover && carryover.incidentId === selected.id ? carryover.items : undefined
-              }
+              incidents={incidents}
+              selectedId={selectedId}
+              onSelect={selectIncident}
             />
-          )}
-          {error && (
-            <p className="error" role="alert">
-              {error}{' '}
-              <button type="button" onClick={closeIncident}>
-                Back to list
-              </button>
-            </p>
-          )}
-        </>
-      ) : (
-        <>
-          <NewReportForm token={token} onSaved={handleSaved} />
-          {loading && <p className="hint">Loading incidents…</p>}
-          {error && (
-            <p className="error" role="alert">
-              {error}{' '}
-              <button type="button" onClick={() => void loadList(token)}>
-                Retry
-              </button>
-            </p>
-          )}
-          <IncidentList incidents={incidents} selectedId={selectedId} onSelect={selectIncident} />
-        </>
-      )}
-    </main>
+          </>
+        )}
+      </main>
+    </>
   )
 }
 

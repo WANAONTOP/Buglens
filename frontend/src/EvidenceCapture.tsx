@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Disclosure } from './Progressive'
 import { ApiError, api, formatBytes, formatTimestampMs, uploadEvidence } from './api'
 import type { Evidence, EvidenceKind } from './types'
 
@@ -55,6 +56,8 @@ interface Props {
   initialItems?: LocalItem[]
   /** Reports local items upward so the draft screen can upload them after create. */
   onPendingChange?: (items: LocalItem[]) => void
+  /** Compact single-attachment-area layout for the new-report wizard. */
+  compact?: boolean
 }
 
 type Preview = { type: 'local'; uid: string } | { type: 'uploaded'; evidenceId: string } | null
@@ -126,6 +129,7 @@ export default function EvidenceCapture({
   onChanged,
   initialItems,
   onPendingChange,
+  compact = false,
 }: Props) {
   // Carryover items arrive with URLs revoked by the unmounted draft panel,
   // so each mount mints fresh object URLs from the surviving blobs.
@@ -146,6 +150,7 @@ export default function EvidenceCapture({
   const liveUrls = useRef<Set<string>>(new Set())
   const recordingRef = useRef<ActiveRecording | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const discardRef = useRef(false)
 
   recordingRef.current = recording
 
@@ -322,8 +327,11 @@ export default function EvidenceCapture({
     recorder.onerror = () => setRecorderError('Recording failed with a recorder error.')
     recorder.onstop = () => {
       stopTracks(stream)
-      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'video/webm' })
+      const discard = discardRef.current
+      discardRef.current = false
       setRecording(null)
+      if (discard) return
+      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'video/webm' })
       if (blob.size === 0) {
         setRecorderError('Recording produced no data.')
         return
@@ -344,6 +352,19 @@ export default function EvidenceCapture({
     const active = recordingRef.current
     if (active && active.recorder.state !== 'inactive') {
       active.recorder.stop()
+    }
+  }
+
+  function cancelRecording(): void {
+    const active = recordingRef.current
+    if (!active) return
+    discardRef.current = true
+    if (active.recorder.state !== 'inactive') {
+      active.recorder.stop()
+    } else {
+      stopTracks(active.stream)
+      discardRef.current = false
+      setRecording(null)
     }
   }
 
@@ -508,45 +529,91 @@ export default function EvidenceCapture({
     return width !== null && height !== null ? `${width}×${height}` : 'dimensions unknown'
   }
 
+  const filePickers = (
+    <>
+      <label className="file-pick" tabIndex={0} onKeyDown={openPicker}>
+        Attach screenshot
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          multiple
+          onChange={(event) => {
+            handleFiles('screenshot', event.target.files)
+            event.target.value = ''
+          }}
+        />
+      </label>
+      <label className="file-pick" tabIndex={0} onKeyDown={openPicker}>
+        Attach video
+        <input
+          type="file"
+          accept="video/mp4,video/webm"
+          multiple
+          onChange={(event) => {
+            handleFiles('video', event.target.files)
+            event.target.value = ''
+          }}
+        />
+      </label>
+    </>
+  )
+
+  const recordControls = !recording ? (
+    <button type="button" onClick={() => void startRecording()}>
+      Record screen
+    </button>
+  ) : (
+    <>
+      <button type="button" className="recording-active" onClick={stopRecording}>
+        <span className="rec-dot live" aria-hidden="true" /> Stop ({formatTimestampMs(elapsedMs)})
+      </button>
+      <button type="button" onClick={cancelRecording}>
+        Cancel
+      </button>
+    </>
+  )
+
+  function openPicker(event: React.KeyboardEvent): void {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    event.currentTarget.querySelector('input')?.click()
+  }
+
   return (
     <div className="evidence">
-      <h3>Evidence</h3>
+      {!compact && <h3>Evidence</h3>}
 
-      <div className="capture-row">
-        <label className="file-pick">
-          Attach screenshot
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            multiple
-            onChange={(event) => {
-              handleFiles('screenshot', event.target.files)
-              event.target.value = ''
-            }}
-          />
-        </label>
-        <label className="file-pick">
-          Attach video
-          <input
-            type="file"
-            accept="video/mp4,video/webm"
-            multiple
-            onChange={(event) => {
-              handleFiles('video', event.target.files)
-              event.target.value = ''
-            }}
-          />
-        </label>
-        {!recording ? (
-          <button type="button" onClick={() => void startRecording()}>
-            Record screen
-          </button>
-        ) : (
-          <button type="button" className="recording-active" onClick={stopRecording}>
-            <span className="rec-dot" aria-hidden="true" /> Stop ({formatTimestampMs(elapsedMs)})
-          </button>
-        )}
-      </div>
+      {compact ? (
+        <>
+          <h4>Add a screenshot or video</h4>
+          <div className="capture-row">{filePickers}</div>
+          <p className="attach-divider">Or record your screen</p>
+          <div className="capture-row">{recordControls}</div>
+          <p className="capture-limits">
+            PNG, JPEG, WebP up to 10 MB each · MP4, WebM up to 100 MB each.
+          </p>
+          <Disclosure title="Detailed limits">
+            <p className="hint">
+              At most 20 evidence items per report
+              {incidentId !== null && ` (${uploaded.length + items.length} of 20 used)`}. Files are
+              validated by content on the server; oversized or unsupported uploads are rejected
+              with an error and can be retried.
+            </p>
+          </Disclosure>
+        </>
+      ) : (
+        <>
+          <div className="capture-row">
+            {filePickers}
+            {recordControls}
+          </div>
+          <p className="capture-limits">
+            Screenshots: PNG, JPEG, or WebP, up to 10 MiB each. Videos: MP4 or WebM, up to 100 MiB
+            each. At most 20 evidence items per incident
+            {incidentId !== null && ` (${uploaded.length + items.length} of 20 used)`}.
+          </p>
+        </>
+      )}
       {attachError && (
         <p className="error" role="alert">
           {attachError}
@@ -561,11 +628,19 @@ export default function EvidenceCapture({
         <p className="hint">Recording… use the browser&apos;s sharing picker, then Stop here or in the browser chrome.</p>
       )}
 
-      <h4>
-        On this device — not uploaded yet <span className="badge badge-local">Local</span>
-      </h4>
+      {compact ? (
+        <h4>Attachments{items.length > 0 && ` (${items.length})`}</h4>
+      ) : (
+        <h4>
+          On this device — not uploaded yet <span className="badge badge-local">Local</span>
+        </h4>
+      )}
       {items.length === 0 ? (
-        <p className="hint">Nothing attached. Screenshots, videos, recordings, and captured frames land here first.</p>
+        compact ? (
+          <p className="hint">No attachments yet. Anything you add uploads when you save.</p>
+        ) : (
+          <p className="hint">Nothing attached. Screenshots, videos, recordings, and captured frames land here first.</p>
+        )
       ) : (
         <ul className="evidence-list">
           {items.map((item) => (
@@ -591,7 +666,12 @@ export default function EvidenceCapture({
                   </span>
                 </span>
               ) : incidentId === null ? (
-                <span className="hint">Uploads when you save the report.</span>
+                <span className="evidence-actions">
+                  <button type="button" onClick={() => removeItem(item)}>
+                    Remove
+                  </button>
+                  <span className="hint">Uploads when you save.</span>
+                </span>
               ) : (
                 <span className="evidence-actions">
                   <button type="button" onClick={() => void uploadItem(item)}>

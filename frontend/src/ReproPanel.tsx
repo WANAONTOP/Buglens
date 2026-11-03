@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Disclosure, HashValue } from './Progressive'
 import { ApiError, api, formatBytes } from './api'
 import type { Incident, ReproRun, ReproState, ReproSummary, ReproVerdict } from './types'
 
@@ -15,6 +16,8 @@ function stateBadge(state: ReproState): string {
       return 'badge-uploaded'
     case 'done':
       return 'badge-intake_complete'
+    case 'error':
+      return 'badge-FAIL'
     default:
       return 'badge-blocked'
   }
@@ -236,14 +239,17 @@ export default function ReproPanel({ token, incident }: Props) {
               </>
             )}
             <dt>Commit</dt>
-            <dd>{selected.commit_sha}</dd>
+            <dd>
+              <HashValue value={selected.commit_sha} label="commit SHA" />
+            </dd>
             <dt>Contract</dt>
-            <dd>{selected.contract_hash}</dd>
+            <dd>
+              <HashValue value={selected.contract_hash} label="contract hash" />
+            </dd>
           </dl>
 
           {selected.events.length > 0 && (
-            <>
-              <h4>Events</h4>
+            <Disclosure title="Run events" count={selected.events.length}>
               <ol className="steps-list">
                 {selected.events.map((event, index) => (
                   <li key={index}>
@@ -251,7 +257,7 @@ export default function ReproPanel({ token, incident }: Props) {
                   </li>
                 ))}
               </ol>
-            </>
+            </Disclosure>
           )}
 
           {selected.artifacts.length > 0 && (

@@ -39,3 +39,6 @@ fixtures/storefront/last-run.json
 Thumbs.db
 
 .vercel-token
+
+# Local UI review screenshots (never commit)
+.ui-shots/

@@ -73,7 +73,34 @@ async function parseErrorBody(response: Response): Promise<string> {
   return `HTTP ${response.status}`
 }
 
-async function request<T>(token: string, path: string, init?: RequestInit): Promise<T> {
+type UnauthorizedListener = () => void
+
+const unauthorizedListeners = new Set<UnauthorizedListener>()
+
+/** Fired when a protected call (other than token validation) gets 401/403. */
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener)
+  return () => {
+    unauthorizedListeners.delete(listener)
+  }
+}
+
+function notifyUnauthorized(): void {
+  for (const listener of unauthorizedListeners) {
+    try {
+      listener()
+    } catch {
+      // Listener failures stay local; the ApiError still propagates.
+    }
+  }
+}
+
+async function request<T>(
+  token: string,
+  path: string,
+  init?: RequestInit,
+  opts?: { silentAuth?: boolean },
+): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${BACKEND_URL}${path}`, {
@@ -90,6 +117,9 @@ async function request<T>(token: string, path: string, init?: RequestInit): Prom
     throw new ApiError(0, err instanceof Error ? err.message : 'Network error')
   }
   if (!response.ok) {
+    if (!opts?.silentAuth && (response.status === 401 || response.status === 403)) {
+      notifyUnauthorized()
+    }
     throw new ApiError(response.status, await parseErrorBody(response))
   }
   return (await response.json()) as T
@@ -98,6 +128,11 @@ async function request<T>(token: string, path: string, init?: RequestInit): Prom
 export const api = {
   listIncidents(token: string): Promise<IncidentSummary[]> {
     return request(token, '/api/incidents')
+  },
+
+  /** Authenticate a token against an existing protected endpoint. Never fires the global 401 handler. */
+  validateToken(token: string): Promise<IncidentSummary[]> {
+    return request(token, '/api/incidents', undefined, { silentAuth: true })
   },
 
   getIncident(token: string, id: string): Promise<Incident> {

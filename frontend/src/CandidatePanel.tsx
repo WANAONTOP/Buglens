@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import PublishPanel from './PublishPanel'
-import VerifyPanel from './VerifyPanel'
+import DiffView from './DiffView'
+import { HashValue } from './Progressive'
 import { ApiError, api } from './api'
 import type {
   Candidate,
@@ -28,16 +28,11 @@ function stateBadge(state: string): string {
       return 'badge-uploaded'
     case 'approved':
       return 'badge-intake_complete'
+    case 'error':
+      return 'badge-FAIL'
     default:
       return 'badge-blocked'
   }
-}
-
-function diffClass(line: string): string {
-  if (line.startsWith('+') && !line.startsWith('+++')) return 'diff-add'
-  if (line.startsWith('-') && !line.startsWith('---')) return 'diff-del'
-  if (line.startsWith('@@')) return 'diff-hunk'
-  return ''
 }
 
 export default function CandidatePanel({ token, incident }: Props) {
@@ -251,13 +246,19 @@ export default function CandidatePanel({ token, incident }: Props) {
               </>
             )}
             <dt>Baseline</dt>
-            <dd>{selected.baseline_sha}</dd>
+            <dd>
+              <HashValue value={selected.baseline_sha} label="baseline SHA" />
+            </dd>
             <dt>Contract</dt>
-            <dd>{selected.contract_hash}</dd>
+            <dd>
+              <HashValue value={selected.contract_hash} label="contract hash" />
+            </dd>
             {selected.diff_sha256 && (
               <>
                 <dt>Diff hash</dt>
-                <dd>{selected.diff_sha256}</dd>
+                <dd>
+                  <HashValue value={selected.diff_sha256} label="diff hash" />
+                </dd>
               </>
             )}
           </dl>
@@ -265,14 +266,7 @@ export default function CandidatePanel({ token, incident }: Props) {
           {selected.diff && (
             <>
               <h4>Proposed diff (not applied, not verified)</h4>
-              <pre className="diff-view">
-                {selected.diff.split('\n').map((line, i) => (
-                  <span key={i} className={diffClass(line)}>
-                    {line}
-                    {'\n'}
-                  </span>
-                ))}
-              </pre>
+              <DiffView diff={selected.diff} label={`Proposed diff for candidate ${shortHash(selected.id)}`} />
             </>
           )}
 
@@ -340,6 +334,7 @@ export default function CandidatePanel({ token, incident }: Props) {
               />
               <button
                 type="button"
+                className="btn-primary"
                 onClick={() => void handleDecision('approve')}
                 disabled={deciding || selected.validation === null || !selected.validation.ok}
               >
@@ -356,9 +351,11 @@ export default function CandidatePanel({ token, incident }: Props) {
                 Approval is disabled: the candidate did not pass validation.
               </p>
             )}
-
-          <VerifyPanel token={token} candidate={selected} />
-          <PublishPanel token={token} candidate={selected} />
+          {selected.state === 'approved' && (
+            <p className="hint">
+              Approved. Continue in the Verification tab to verify this exact candidate.
+            </p>
+          )}
         </div>
       )}
     </section>

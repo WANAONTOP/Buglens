@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { HashValue } from './Progressive'
 import { ApiError, api } from './api'
 import type { Incident, Investigation, InvestigationSummary, ReproSummary } from './types'
 
@@ -19,9 +20,43 @@ function stateBadge(state: string): string {
       return 'badge-uploaded'
     case 'done':
       return 'badge-intake_complete'
+    case 'error':
+      return 'badge-FAIL'
     default:
       return 'badge-blocked'
   }
+}
+
+function originLabel(origin: string): string {
+  switch (origin) {
+    case 'uploaded':
+      return 'Uploaded evidence'
+    case 'baseline':
+      return 'Baseline capture'
+    case 'broken':
+      return 'Broken-route capture'
+    case 'control':
+      return 'Control-route capture'
+    default:
+      return origin
+  }
+}
+
+function renderRefs(refs: string[]): ReactNode {
+  if (refs.length === 0) return 'none cited'
+  return refs.map((ref, index) => (
+    <span key={`${ref}-${index}`}>
+      {index > 0 && ', '}
+      {/* Buttons, not hash links: the app router owns `location.hash`. */}
+      <button
+        type="button"
+        className="evidence-ref"
+        onClick={() => document.getElementById(`ev-${ref}`)?.scrollIntoView({ block: 'center' })}
+      >
+        {ref}
+      </button>
+    </span>
+  ))
 }
 
 export default function InvestigationPanel({ token, incident }: Props) {
@@ -220,16 +255,25 @@ export default function InvestigationPanel({ token, incident }: Props) {
               </>
             )}
             <dt>Commit</dt>
-            <dd>{selected.commit_sha}</dd>
+            <dd>
+              <HashValue value={selected.commit_sha} label="commit SHA" />
+            </dd>
             <dt>Contract</dt>
-            <dd>{selected.contract_hash}</dd>
+            <dd>
+              <HashValue value={selected.contract_hash} label="contract hash" />
+            </dd>
           </dl>
 
           {selected.sam !== null && frameUrl !== null && (
             <>
               <h4>
-                Frame {selected.sam.frame_ref} ({selected.sam.frame_w}×{selected.sam.frame_h})
+                Reproduction frame {selected.sam.frame_ref} ({selected.sam.frame_w}×
+                {selected.sam.frame_h})
               </h4>
+              <p className="hint">
+                Captured by reproduction run {shortHash(selected.run_id)} — a reproduced image,
+                not an uploaded file. Boxes below are the recorded segmentation matches only.
+              </p>
               <div className="frame-wrap">
                 <img src={frameUrl} alt={`Segmented frame ${selected.sam.frame_ref}`} />
                 {selected.sam.matches.map((box) => (
@@ -301,42 +345,49 @@ export default function InvestigationPanel({ token, incident }: Props) {
             <>
               <h4>Root-cause hypotheses ({selected.wonder.call.model})</h4>
               {selected.wonder.parsed ? (
-                <ol className="steps-list">
+                <div>
                   {selected.wonder.hypotheses.map((h) => (
-                    <li key={h.rank}>
-                      <strong>{h.cause}</strong> — {h.mechanism}
-                      <br />
-                      Supporting: {h.supporting_evidence.join(', ') || 'none cited'}
-                      {h.conflicting_or_missing.length > 0 && (
-                        <>
-                          <br />
-                          Conflicting/missing: {h.conflicting_or_missing.join('; ')}
-                        </>
-                      )}
-                      {h.locations.length > 0 && (
-                        <>
-                          <br />
-                          Locations:{' '}
-                          {h.locations
-                            .map((l) => `${l.file}:${l.start_line}-${l.end_line}`)
-                            .join(', ')}
-                        </>
-                      )}
-                      {h.unvalidated_citations.length > 0 && (
-                        <>
-                          <br />
-                          Unvalidated citations: {h.unvalidated_citations.join('; ')}
-                        </>
-                      )}
-                      {h.repair_direction && (
-                        <>
-                          <br />
-                          Repair direction: {h.repair_direction}
-                        </>
-                      )}
-                    </li>
+                    <article key={h.rank} className="hypothesis">
+                      <h5 className="hypothesis-title">
+                        #{h.rank} {h.cause}
+                      </h5>
+                      <dl>
+                        <dt>Mechanism</dt>
+                        <dd>{h.mechanism}</dd>
+                        <dt>Supporting</dt>
+                        <dd>{renderRefs(h.supporting_evidence)}</dd>
+                        {h.conflicting_or_missing.length > 0 && (
+                          <>
+                            <dt>Conflicting/missing</dt>
+                            <dd>{h.conflicting_or_missing.join('; ')}</dd>
+                          </>
+                        )}
+                        {h.locations.length > 0 && (
+                          <>
+                            <dt>Locations</dt>
+                            <dd>
+                              {h.locations
+                                .map((l) => `${l.file}:${l.start_line}-${l.end_line} (${l.certainty})`)
+                                .join(', ')}
+                            </dd>
+                          </>
+                        )}
+                        {h.unvalidated_citations.length > 0 && (
+                          <>
+                            <dt>Unvalidated</dt>
+                            <dd>{h.unvalidated_citations.join('; ')}</dd>
+                          </>
+                        )}
+                        {h.repair_direction && (
+                          <>
+                            <dt>Repair direction</dt>
+                            <dd>{h.repair_direction}</dd>
+                          </>
+                        )}
+                      </dl>
+                    </article>
                   ))}
-                </ol>
+                </div>
               ) : (
                 <p className="hint">
                   Unparsed model reply ({selected.wonder.parse_note}): {selected.wonder.raw_text}
@@ -350,9 +401,19 @@ export default function InvestigationPanel({ token, incident }: Props) {
               <h4>Evidence package</h4>
               <ul className="evidence-list">
                 {selected.evidence.map((item) => (
-                  <li key={item.ref} className="evidence-item">
+                  <li key={item.ref} id={`ev-${item.ref}`} className="evidence-item">
                     <span className="evidence-name">
-                      {item.ref} [{item.origin}/{item.kind}] {item.summary}
+                      {item.ref} · {item.summary}
+                    </span>
+                    <span className="evidence-meta">
+                      <span
+                        className={`origin-tag${item.origin === 'uploaded' ? ' origin-uploaded' : ''}`}
+                      >
+                        {originLabel(item.origin)}
+                      </span>{' '}
+                      {item.kind}
+                      {item.route && ` · ${item.route}`}
+                      {item.artifact && ` · ${item.artifact}`}
                     </span>
                   </li>
                 ))}

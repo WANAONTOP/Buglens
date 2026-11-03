@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import DiffView from './DiffView'
+import { Disclosure, HashValue } from './Progressive'
 import { ApiError, api } from './api'
 import type {
   Candidate,
@@ -108,7 +110,7 @@ export default function PublishPanel({ token, candidate }: Props) {
   const canPublish = preview !== null && preview.preflight_ok && !previewStale && !publishing && !loading
 
   return (
-    <section>
+    <section id="publish">
       <h4>Verified GitHub PR publication (never auto-merges)</h4>
       <p className="hint">
         Preview shows the exact branch, diff and PR body after a server-side preflight. Publish is
@@ -167,18 +169,22 @@ export default function PublishPanel({ token, candidate }: Props) {
             <dd>{preview.repo}</dd>
             <dt>Base</dt>
             <dd>
-              {preview.base_branch} @ {preview.base_sha}
+              {preview.base_branch} @ <HashValue value={preview.base_sha} label="base SHA" />
             </dd>
             <dt>Repair branch</dt>
             <dd>{preview.branch}</dd>
             <dt>Changed files</dt>
             <dd>{preview.changed_files.join(', ') || '(none)'}</dd>
             <dt>Diff SHA-256</dt>
-            <dd>{preview.diff_sha256}</dd>
+            <dd>
+              <HashValue value={preview.diff_sha256} label="diff hash" />
+            </dd>
             <dt>PR title</dt>
             <dd>{preview.pr_title}</dd>
             <dt>Verification</dt>
-            <dd>{preview.verification_id}</dd>
+            <dd>
+              <HashValue value={preview.verification_id} label="verification ID" />
+            </dd>
             <dt>Preflight</dt>
             <dd>{preview.preflight_ok ? 'all checks passed' : 'BLOCKED — see failed checks'}</dd>
           </dl>
@@ -199,7 +205,7 @@ export default function PublishPanel({ token, candidate }: Props) {
           </ul>
 
           <h4>Exact diff</h4>
-          <pre className="diff-view">{preview.diff}</pre>
+          <DiffView diff={preview.diff} label="Exact diff of the previewed publication" />
 
           <h4>PR body</h4>
           <pre className="diff-view">{preview.pr_body}</pre>
@@ -230,6 +236,17 @@ export default function PublishPanel({ token, candidate }: Props) {
       {selected !== null && (
         <div>
           <h4>Publication {shortHash(selected.id)}</h4>
+          {selected.state === 'published' && selected.pr_url && (
+            <p className="pr-banner">
+              <span>
+                Published{selected.pr_number > 0 && ` as PR #${selected.pr_number}`} on{' '}
+                {selected.branch}:
+              </span>
+              <a href={selected.pr_url} target="_blank" rel="noreferrer">
+                {selected.pr_url}
+              </a>
+            </p>
+          )}
           <dl className="meta-grid">
             <dt>State</dt>
             <dd>{selected.state}</dd>
@@ -244,7 +261,9 @@ export default function PublishPanel({ token, candidate }: Props) {
             {selected.commit_sha && (
               <>
                 <dt>Commit</dt>
-                <dd>{selected.commit_sha}</dd>
+                <dd>
+                  <HashValue value={selected.commit_sha} label="repair commit SHA" />
+                </dd>
               </>
             )}
             {selected.state === 'published' && selected.pr_url && (
@@ -259,8 +278,7 @@ export default function PublishPanel({ token, candidate }: Props) {
             )}
           </dl>
           {selected.events.length > 0 && (
-            <>
-              <h4>Publication events</h4>
+            <Disclosure title="Publication events" count={selected.events.length}>
               <ul className="evidence-list">
                 {selected.events.map((event, index) => (
                   <li key={`${event.at}-${index}`} className="evidence-item">
@@ -269,7 +287,7 @@ export default function PublishPanel({ token, candidate }: Props) {
                   </li>
                 ))}
               </ul>
-            </>
+            </Disclosure>
           )}
         </div>
       )}
