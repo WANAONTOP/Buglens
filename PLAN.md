@@ -237,5 +237,52 @@ Acceptance checks:
 - [x] Deploy commands, secret names, smoke procedure in README.
 - [x] Nothing deployed; PR #1 open/unmerged; pinned baseline and
   verification evidence untouched.
-- [ ] Live deploy + bounded smoke (upload, job, poll, artifacts,
-  restart persistence) — a later explicit step.
+- [x] Live deploy + bounded smoke (upload, job, poll, artifacts,
+  restart persistence) — done in Step 12.
+
+## Step 12 — Correctness review + live deploy and smoke
+
+- Resolved deploy write races by ownership + lifecycle ordering
+  (spawn lock, call-id handshake, guarded claims/marks, kill-first
+  cancel, liveness-gated reconcile, terminal immutability).
+- Deployed `buglens-ai` to Modal (Volume + 6-name Secret, no
+  credentials in image/logs/repo) and ran the bounded live smoke:
+  health, auth, CORS, incident + screenshot, one real remote
+  reproduction at the pinned baseline, duplicate rejection, polls,
+  artifact hashes, and post-redeploy persistence on a new container.
+
+Acceptance checks:
+
+- [x] Focused race tests added; full suite 192 green; build green.
+- [x] Checkpoint `a7d4db9` + live fix `720f3a5` on local branch
+  `step12/deploy-prep` (reviewed for secrets; not pushed).
+- [x] Live smoke all passed; job `2224e93e` done/REPRODUCED at
+  `9174a460…`; persistence verified after redeploy.
+- [x] No model calls, no verification run, no PR action, no merge,
+  no push to main; PR #1 open/unmerged; local records untouched.
+- [x] Host the frontend; point CORS at the real origin (Step 13).
+- [ ] Remote model workers + publication still unverified live.
+
+## Step 13 — Hosted frontend + production CORS + browser checks
+
+- Production Vite build with `VITE_BUGLENS_API_URL` baked in and a
+  fail-closed guard (no localhost fallback in production); bundle
+  scanned for secret leaks; deployed to Vercel production.
+- `BUGLENS_CORS_ORIGINS` replaced with the exact production origin
+  (all other secret entries preserved); backend redeployed; allowed
+  origin echoes, other origins rejected, no wildcard.
+- Real-browser suite over the hosted site: load, refresh, sign-in,
+  remote incident + artifacts, uploads + retrieval, deep links,
+  logout; Record Screen interaction pending-manual (OS picker).
+- Missing Meta credentials surface as actionable `not_configured`
+  API state with no secret values; no model/verification/PR calls.
+
+Acceptance checks:
+
+- [x] Website live at `https://frontend-jade-rho-52.vercel.app`.
+- [x] 15/15 scripted browser checks pass (headless Edge).
+- [x] Screenshot round-trips byte-identical; real WebM previews.
+- [x] Deep links survive refresh; logout gates access.
+- [x] Record Screen pending with exact manual steps documented.
+- [x] Checkpoint on `step12/deploy-prep` (not pushed); PR #1 intact.
+- [ ] Configure Meta for one hosted upload-to-verification run.

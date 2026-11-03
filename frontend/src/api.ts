@@ -15,9 +15,14 @@ import type {
   VerificationSummary,
 } from './types'
 
-// Build-time override for a hosted backend (`VITE_BUGLENS_API_URL` in
-// frontend/.env); falls back to the local uvicorn default.
+// Build-time backend address (`VITE_BUGLENS_API_URL`). Local `vite dev`
+// falls back to the uvicorn default, but a production bundle without the
+// variable fails loudly at load instead of silently calling localhost.
 const configuredUrl = (import.meta.env.VITE_BUGLENS_API_URL as string | undefined)?.trim()
+
+if (import.meta.env.PROD && !configuredUrl) {
+  throw new Error('VITE_BUGLENS_API_URL is not set for this production build')
+}
 
 export const BACKEND_URL =
   configuredUrl && configuredUrl.length > 0 ? configuredUrl : 'http://127.0.0.1:8000'

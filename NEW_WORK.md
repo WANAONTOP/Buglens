@@ -714,6 +714,107 @@ live restart persistence and remote execution unverified; 2400s
 verify-worker timeout vs 30-min runs needs a live run; API must stay
 single-container.
 
+## Step 12 — Correctness review + live deploy and smoke (LIVE, passed)
+
+Storage review found and fixed real races (single-dev deployment):
+duplicate spawn had no serialization or same-record check; the
+spawn-update could wipe a worker's early claim; worker progress
+writes could resurrect API-cancelled records (wide kill-latency
+window); terminal-vs-terminal overwrites; reconcile could mark an
+alive-but-quiet worker lost. Verified the incident registry is
+API-write-only (runners only read) and artifact downloads open
+post-reload atomic files. Fix by ownership + lifecycle ordering, not
+cross-container locks: per-module spawn lock (exactly-once spawn;
+same-record resubmission is idempotent); worker writes nothing until
+the API's `worker_call_id` commit is visible (else `uncommitted`,
+reconcile later marks lost); guarded `queued`-only claims;
+`expect_states` preconditions on spawn/cancel/reconcile/crash marks;
+every deploy-mode update reloads first and refuses terminal-record
+writes; cancel kills with container termination, confirms death,
+then marks; reconcile marks lost only on confirmed-finished (or
+never-recorded) calls, failing safe on `unknown`; terminal
+lifecycle events folded into the mark write (keeps the preflight
+"cancellation requested" marker). Residual: a worker surviving
+container termination could write after the mark (documented).
+Touched: `deploy.py` (`call_status`, `wait_for_call_end`,
+terminating `cancel_call`), 4 job stores (guards), 4 jobs modules,
+4 cancel routes (event folded into jobs), `workers.py` (handshake +
+claims), `main.py` (DeployError → 503). Tests: 12 new focused race
+tests (34 deploy tests total), full suite 192 green, build green.
+
+Deploy (authorized): Volume `buglens-data` + Secret `buglens-secrets`
+(both new; names only ever shown) holding exactly `BUGLENS_API_TOKEN`,
+`GITHUB_TOKEN`, `GITHUB_REPO`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`,
+`BUGLENS_CORS_ORIGINS=https://buglens-smoke.invalid` (placeholder;
+`META_API_KEY`/`BASETEN_API_KEY` present locally, excluded — no model
+calls in scope). Image ignore hardened (`.env*`, `*.log`, `*.pem`,
+`*.key`); backend tree verified free of secret-shaped files. First
+deploy crashed (`ModuleNotFoundError: app` — entry uploads to
+`/root`, code bakes at `/root/backend`); fixed path resolution in
+`modal_app.py`, redeployed green. Live URL:
+`https://gbishwakarma18--buglens-ai-api.us-east.modal.run` (public
+endpoint, `/api/*` Bearer-authenticated).
+
+Live smoke (one repro job, no model calls): health ok; 401s correct;
+preflight echoes the allowed origin only; incident `b9279a59`
+created; screenshot uploaded with matching sha; start returned 202
+in 7.0s; duplicate POST → 429 with no second run/worker; run
+`2224e93e` went queued → running → done `REPRODUCED` at pinned
+`9174a460…` with remote `worker_call_id` + claim event (23 events,
+10 artifacts, download hash verified). Redeployed (new container):
+incident, evidence, worker results, and byte-identical artifacts all
+served by the fresh reader — persistence VERIFIED. Checkpoint
+`a7d4db9` + live fix `720f3a5` on local-only branch
+`step12/deploy-prep` (staged content secret-scanned; not pushed).
+PR #1 open/unmerged; local records and main untouched. Remaining:
+host the frontend (`VITE_BUGLENS_API_URL` = live URL, then real
+CORS origin in the secret + redeploy); remote model workers,
+publication-from-deploy, and the 2400s verify timeout unverified.
+
+## Step 13 — Hosted frontend + browser checks (LIVE, passed)
+
+No configured host existed, so Vercel it was. CLI login never
+landed in this shell (two confirmations, no credentials file;
+`--temporary` also demanded login), so deployment used a user-made
+token file (`D:\buglens-ai\.vercel-token`, Git-ignored): a script
+passed it to the child CLI process only, never printed it, and
+deleted the file after success. Prebuilt static deploy
+(`frontend/dist` via Build Output API v3; hash deep links need no
+rewrites): production URL
+`https://frontend-jade-rho-52.vercel.app`
+(first attempt failed on a PowerShell-mangled `config.json`, fixed
+and redeployed). Build sets `VITE_BUGLENS_API_URL` to the Modal
+backend; new fail-closed guard in `api.ts` throws at load when a
+production bundle lacks it (local dev keeps the uvicorn fallback).
+Bundle verified: backend URL baked, guard present, no `sk-`/`ghp_`
+shapes, only `.env.example` on disk, exactly one `VITE_*` var at
+build time. `BUGLENS_CORS_ORIGINS` swapped to the exact production
+origin (other 5 secret entries rebuilt from the same local sources),
+backend redeployed: allowed preflight 200 + echo, smoke/evil
+origins 400 without echo, no wildcard.
+
+Browser suite (headless Edge, scripted, token via `.env` inside the
+script only): 15/15 — load, Backend connected, refresh, sign-in
+(Saved incidents (1)), smoke incident + done/REPRODUCED run,
+artifacts after Open, deep-link open + refresh survival, screenshot
+upload with byte-identical retrieval (sha match), real
+browser-encoded vp9 WebM upload with preview + Capture frame, logout
+(token cleared, access gated). Headed Record attempt: click produced
+no in-page change and Escape produced no denial text (native picker
+not drivable) — full Record/Stop/playback/capture/marking stays
+pending-manual: open the site, Save token, open an incident, Record
+screen → OS picker → Share → Stop → preview/capture/mark → Upload.
+Cosmetic: `/favicon.ico` 404s. Providers endpoint: meta + baseten
+`not_configured` with actionable value-free messages, github/modal
+`configured_untested`; zero model/verification/publication calls.
+Remote holds only Step 12-13 smoke data (no local records copied;
+local completed incident NOT claimed remotely). Docs + `api.ts`
+guard + `.gitignore` (`.vercel/`, `.vercel-token`) checkpointed on
+`step12/deploy-prep` (not pushed); PR #1 unmerged. Remaining for a
+hosted upload-to-verification run: add `META_API_KEY` to
+`buglens-secrets` (+ redeploy), run provider smokes, then drive
+investigate → candidate → verify remotely.
+
 ## Later steps
 
 Append one section per milestone with files touched and verification results.

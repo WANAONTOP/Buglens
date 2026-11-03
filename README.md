@@ -346,13 +346,48 @@ change; open and unmerged, merge left to a human. This is an owned
 evaluation-fixture repair verified within the tested scope; checks
 ran in Modal, not GitHub CI (see NEW_WORK.md).
 
-## Modal deployment (Step 11 — prepared, NOT deployed)
+## Modal deployment (Steps 12-13 — LIVE single-developer demo)
 
-The backend is ready to deploy to Modal but has not been deployed:
-no `modal deploy` run, no secrets created, no live remote checks in
-this step. Local uvicorn development is unchanged and remains the
-default; deploy behavior activates only when `BUGLENS_MODAL=1` and
-`BUGLENS_JOBS=modal` are both set (the Modal app sets both remotely).
+The backend is deployed to Modal and the production frontend is
+hosted on Vercel (bounded live smoke below). This remains a single-developer authenticated demo: one shared
+`BUGLENS_API_TOKEN` (typed in by the user, kept in tab session
+storage, never in the bundle), one API container, CORS pinned to the
+exact production origin (no wildcard). Local uvicorn
+development is unchanged and remains the default; deploy behavior
+activates only when `BUGLENS_MODAL=1` and `BUGLENS_JOBS=modal` are
+both set (the Modal app sets both remotely).
+
+Live backend URL (public endpoint; `/api/*` still requires the
+Bearer token):
+
+```text
+https://gbishwakarma18--buglens-ai-api.us-east.modal.run
+```
+
+Live website (Step 13):
+
+```text
+https://frontend-jade-rho-52.vercel.app
+```
+
+Sign-in: open the website, paste the `BUGLENS_API_TOKEN` value from
+your local `.env` into "Paste API token", choose "Save token". The
+token stays in that tab only; "Clear" removes it and gates access
+again. Never put tokens in `VITE_*` variables.
+
+The production bundle sets `VITE_BUGLENS_API_URL` to the backend
+URL at build time and refuses to load without it (no localhost
+fallback in production). Hosted browser checks (15/15 scripted,
+headless Edge): load, refresh, sign-in, remote smoke incident +
+`REPRODUCED` run + artifacts, deep-link survival, screenshot upload
+with byte-identical retrieval, real browser-encoded WebM upload
+with preview and frame capture, logout gating. Real Record Screen
+interaction (OS picker → Stop → playback → marking) still needs a
+headed browser + human and is pending; only cosmetic issue found is
+a missing `/favicon.ico` (404). Remote Meta/Baseten credentials are
+not configured: `/api/providers/status` reports `not_configured`
+with setup guidance and no secret values; no model, verification,
+or publication calls ran in this step.
 
 What exists: `backend/modal_app.py` (Modal App `buglens-ai`: one
 `max_containers=1` ASGI function plus `run_repro_worker`,
@@ -366,20 +401,28 @@ per-request volume reload/commit middleware; `worker_call_id` on job
 records; `BUGLENS_CORS_ORIGINS` allowlist; frontend
 `VITE_BUGLENS_API_URL` (see `frontend/.env.example`).
 
-The shared Volume is not a transactional database. Concurrency
-limits: the API runs as a single container so its in-process locks
-stay valid; each worker owns exactly one record file; the
-single-file incidents registry fails loudly (409) on write conflicts;
-same-record writes from two containers are last-writer-wins (a
-crash-only race via the worker claim check, never the normal path).
-Shared-token `BUGLENS_API_TOKEN` auth is a single-developer demo
-limitation. Sandboxes still receive no credentials.
+The shared Volume is not a transactional database. Write safety
+comes from ownership and lifecycle ordering (Step 12 review): the
+API runs as a single container so its in-process locks serialize
+API-side writes; `incidents.json` is API-write-only (workers only
+read it; the 409 OCC guard stays as a tripwire); each job record is
+phase-owned (API while queued, the one spawned worker while active,
+terminal states immutable); the worker writes nothing until the
+API's spawn commit is visible; cancel kills (with container
+termination) and confirms death before marking; the stale reconcile
+marks a record lost only when its worker call is confirmed finished
+or was never recorded. Shared-token `BUGLENS_API_TOKEN` auth is a
+single-developer demo limitation. Sandboxes still receive no
+credentials.
 
-Required Modal Secret `buglens-secrets` names (values never in the
-repo, logs, or images): `META_API_KEY`, `GITHUB_TOKEN`,
-`GITHUB_REPO`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`,
-`BUGLENS_API_TOKEN`, `BUGLENS_CORS_ORIGINS`, and optionally
-`BASETEN_API_KEY`.
+Modal Secret `buglens-secrets` holds exactly these names (values
+never in the repo, logs, or images): `BUGLENS_API_TOKEN`,
+`GITHUB_TOKEN`, `GITHUB_REPO`, `MODAL_TOKEN_ID`,
+`MODAL_TOKEN_SECRET`, `BUGLENS_CORS_ORIGINS` (exactly
+`https://frontend-jade-rho-52.vercel.app`, no wildcard).
+`META_API_KEY` and `BASETEN_API_KEY` are present locally but were
+deliberately left out of the secret — model workers are unverified
+remotely, and no model call has run against the deployment.
 
 Exact PowerShell deployment commands (Modal SDK 1.6.3, from the repo
 root, using the project environment). Create `.env.modal` (gitignored
@@ -395,22 +438,25 @@ Remove-Item .env.modal
 Then point a hosted frontend at the deployed API URL with
 `VITE_BUGLENS_API_URL` (no trailing slash) and rebuild.
 
-Bounded live smoke procedure (not yet run — deploy step only):
+Bounded live smoke procedure (Step 12 — RAN, all passed):
 1. `GET /health` on the deployed URL returns ok.
-2. Create a draft incident (authenticated), upload a small screenshot,
-   confirm it lists back.
-3. Start one reproduction; poll status until terminal; download one
-   artifact.
-4. Restart/redeploy the API container; confirm the incident, evidence,
-   and job record persist from the Volume.
-5. Confirm a second write to the incidents registry under a stale
-   version returns 409, not silent loss.
+2. Missing/wrong auth rejected (401); preflight echoes the allowed
+   origin and not an evil one.
+3. Create an incident (authenticated), upload a small screenshot,
+   confirm the recorded hash matches the bytes.
+4. Start one reproduction (202 in seconds); an immediate duplicate
+   POST is rejected (429) with no second worker.
+5. Poll to terminal; download one artifact and verify its hash.
+6. Redeploy the API (new container); confirm the incident, evidence,
+   completed worker results, and byte-identical artifacts persist.
 
-Remaining blockers: live restart persistence and remote worker
-execution are unverified (all Step 11 checks are local/mocked);
-30-minute verifications vs the 2400s worker timeout need a live run;
-multi-replica API would break in-process locks (held at
-`max_containers=1` by design).
+Remaining blockers: remote investigate/candidate/verify workers
+and GitHub publication from the deployment are unverified (one
+reproduction only, no model calls yet); 30-minute verifications vs
+the 2400s worker timeout need a live run; multi-replica API would
+break in-process locks (held at `max_containers=1` by design); real
+Record Screen interaction is pending-manual; `/favicon.ico` 404s
+(cosmetic).
 
 ## Configuration
 

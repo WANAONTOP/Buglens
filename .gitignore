@@ -16,6 +16,7 @@ build/
 # Node
 node_modules/
 frontend/dist/
+frontend/.vercel/
 *.local
 
 # Private runtime artifacts (reproductions, uploads, model outputs, logs)
@@ -36,3 +37,5 @@ fixtures/storefront/last-run.json
 *.swp
 .DS_Store
 Thumbs.db
+
+.vercel-token
