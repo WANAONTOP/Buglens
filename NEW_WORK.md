@@ -815,6 +815,158 @@ hosted upload-to-verification run: add `META_API_KEY` to
 `buglens-secrets` (+ redeploy), run provider smokes, then drive
 investigate → candidate → verify remotely.
 
+## Step 14 — Meta config + hosted screenshot-to-candidate (LIVE, proposed)
+
+Secret: rebuilt `buglens-secrets` from the same local sources with
+`META_API_KEY` added (7 keys; production CORS + all 6 others
+preserved; values never printed); redeployed. Providers endpoint:
+meta/github/modal `configured_untested`, baseten `not_configured`.
+Zero smoke calls — connectivity proven by the workflow itself.
+
+Demo incident `54ce59632c254778bbb8fb3b2f8a8c79` (link:
+`https://frontend-jade-rho-52.vercel.app/#incident=54ce59632c254778bbb8fb3b2f8a8c79`),
+created through the website with the required expected ("Pay now
+completes checkout and shows confirmation") / observed ("clicking
+Pay now is blocked by an overlay") text, repo/ref/viewport/paths,
+and an evaluation-fixture label. Screenshot `demo14_checkout.png`
+is genuine: served the local fixture (verified byte-identical to
+pinned `9174a460…` for served files), clicked Pay now (Playwright's
+own click timed out on the overlay), captured button-without-
+confirmation at 1280x800. Uploaded via the site; recorded as
+evidence E1 (`ba438ca7…`, sha `1eea85be…`).
+
+Hosted UI-driven workflow, all remote workers: run
+`8ebd9aa3897646d1825c62768602adfa` → done/REPRODUCED at
+`9174a460…` (10 artifacts); investigation
+`b1affe7a01264652b25180a674cbbb6b` → done, 25 evidence items, 1
+Wonder hypothesis (transparent `div#promo-overlay` intercepts Pay
+now clicks; inferred location `checkout.html:36`, validated at the
+pinned SHA; refs E6-E25); candidate
+`b7eaf07ae7044555a2b7fecc16dc1b5e` → proposed, validation 5/5 ok,
+single-file removal of the overlay div (diff hash
+`2dedeb654f7c0153…`), approval null. URL shown after refresh with
+all panels (screenshot `shot14_candidate.png`).
+
+Screenshot contribution, precisely: E1 is in the package with
+verified identity and depicts the same broken state as repro frame
+E4 (button visible, no confirmation), corroborating the report —
+but Spark analyzed E4/E16 and no hypothesis cites E1; the causal
+diagnosis rests on DOM/hit-test evidence. SAM segmented the
+visible Pay button only (1 match); its own note states the overlay
+is established by DOM/hit-test, not vision. Usage as reported, all
+first-attempt completions: Spark 2667+1426 (13.2s), SAM 1 image
+(0.9s, 0 tokens), Wonder-inv 1343+2311 (15.4s), Wonder-cand
+2435+2548 (18.2s); 12,730 tokens total, no cost data (none
+invented). Review note: the candidate REMOVES the overlay div where
+PR #1's approach added `pointer-events: none` — removal is minimal
+for an empty invisible element but drops the promo hook; the model
+itself flags reintroducing future promos without viewport-covering
+pointer events. PR #1 open/unmerged, same head `b59b1d7d`. No
+verification, no approval, no PR action. Screen recording remains
+pending-manual. Docs updated; no commit requested this step.
+
+## Step 15 — Approved verification of the removal patch (LIVE, VERIFIED)
+
+Approval check: retrieved candidate
+`b7eaf07ae7044555a2b7fecc16dc1b5e` (was proposed/approval-null),
+recomputed sha256 over the stored diff bytes =
+`2dedeb65…` = stored = authorized; baseline `9174a460…`, single
+file `checkout.html`, exact div-removal line — all match, so
+proceeded. Approval via `POST /api/candidates/{id}/approve` with
+the exact hash + honest note (agent API call under the written
+Step 15 authorization, not a UI click) → 200, state approved,
+binding persisted.
+
+One verification via the website's "Verify approved candidate"
+(inside the opened candidate; two script selector misses first —
+panel location + row scoping — no app defect): run
+`883074144b124857934a8fd92d121ee9`, remote worker, done in
+~3.5 min (record 18:11:16→18:14:45Z), outcome VERIFIED, 7/7 PASS,
+contract `67f33335f015`, policy `c6091fe4…`. Gates: (1) baseline
+intercepted/failed/no-confirm, candidate clicked+confirmed+text,
+both controls ok; (2) candidate before/after pixel frac 0.005
+(interaction-caused confirmation); (3) geometry at 1280x800, center
+hits button, control intact; (4) same pytest command both sides,
+93 collected, 91 pass, 2 identical pre-existing failures, 0 new —
+`test_safe_artifact_path_rejects_escape[..\evil.png]` (Windows-path
+case on Linux) and `test_status_requires_app_auth`, both
+completed runs, no infra failure; (5) no errors either side;
+(6) 0/1,024,000 differing pre-click pixels (correct: invisible
+repair); (7) tested hash `8925a621…` + diff `2dedeb65…` equal the
+approval. Cleanup: 4/4 sandboxes created+terminated (bl/cd node,
+gate4-bl/gate4-cd python). Artifacts: 20 recorded; downloads of
+`gate4-bl-tests.txt`, `gate4-cd-tests.txt`, `cd-broken-after.png`
+all MATCH hashes; baseline tail independently reads "2 failed, 91
+passed". Website after refresh shows the incident, approved
+candidate, and run `883074144b12 · done · VERIFIED · 7/7 gates`
+(screenshots `shot15_verify.png`, `shot15_runrow.png`). PR #1 open,
+unmerged, same head `b59b1d7d`; no PR action, merge, or push.
+Limitations: VERIFIED is scoped to the tested policy/viewport/suite
+(removal vs pointer-events styling unjudged); hosted
+upload→verify loop still manual per step; screen recording pending.
+Docs updated; no commit requested.
+
+## Step 16 — PR #2 published for the removal patch (LIVE)
+
+Authorization text stated the diff hash twice: first block
+61 chars (typo, missing "11"), second block the valid 64-char
+`2dedeb65…` matching Step 15's recomputation — proceeded on the
+valid hash only. Live preview 15/15 (`preflight_ok`), base
+main@`9174a460`, tested bytes reproduce, branch absent. The fixed
+template could not express two required disclosures, so added a
+minimal opt-in `notes` → "Reviewer notes" section (prbody +
+service + routes; body text only, never code) with a rendering
+test; title set to "[Alt to #1] Remove promo overlay blocking Pay
+now (evaluation fixture)". Publish tests 27 green; redeployed.
+
+First publish created the correct branch/commit
+(`buglens/fix-b7eaf07a` @ `e4d5c5c2`, exact bytes) but recorded PR
+#1: root cause — GitHub ignores the bare-branch `head` search
+filter (proven: query returned PR #1, head `buglens/fix-ecd72616`)
+and `find_open_pr` trusted it blindly (latent since PR #1's
+publish, when zero PRs were open). PR #1 itself untouched. Fix:
+client-side head-ref verification in `find_open_pr` (documented
+`owner:branch` query form) + a reuse guard that confirms a
+published record's PR head before returning it, retiring
+mismatches as failed; two regression tests (foreign-PR ignored,
+stale record superseded); publish suite 29 green; redeployed.
+
+Second publish retired `bf62986e…` ("recorded PR #1 belongs to a
+different branch") and opened real PR #2:
+`https://github.com/WANAONTOP/Buglens/pull/2` (publication
+`535b504ff6cc4905a214e37cfcf13809`). Read-back: open, unmerged,
+base main@`9174a460`, head `buglens/fix-b7eaf07a`@`e4d5c5c2`,
+exactly `checkout.html` (0+/1−), raw bytes sha256 =
+`8925a621…` = tested hash, overlay div absent; body contains the
+title label, notes, diff/tested hashes, gates table, provenance,
+viewport, limitations, fixture notice, Modal-not-CI statement, and
+the suite line "93 collected, 2 failed (0 new vs baseline);
+failing tests are identical on baseline and candidate
+(pre-existing…)" with both names ("91 passed" = 93−2 via those
+recorded counts). Repeat POST (different notes) returned the same
+publication; open PRs exactly #1+#2; website shows the PR #2 link
+after refresh. PR #1 open/unmerged, same head `b59b1d7d`; no
+merge/push. Deployed code (notes + PR-lookup fix + tests) is
+UNCOMMITTED on the branch — needs a checkpoint step. Screen
+recording still pending-manual. Docs updated; no commit requested.
+
+## Step 17 — Submission checkpoint + public source (pending push)
+
+Review: working tree holds exactly the deployed notes + PR-lookup
+fix, its 3 regression tests, and doc updates — no credentials
+(full-tree + diff scans clean; only test dummies and variable
+names), no data/builds/deps/token files. Validation: backend suite
+195 green (separate from the historical fixture result of 91
+passed / 2 pre-existing / 0 new); production frontend build green
+with the Modal API URL (same bundle hash as the deployed site).
+Deployed backend == working-tree `app/` (last deploy postdates all
+app edits; only docs/tests changed after, tests excluded from the
+image) — no redeploy needed. Added SUBMISSION.md (links, demo
+walkthrough, architecture, scope, limitations) plus README/PLAN
+pointers. Committed and pushed `step12/deploy-prep` (see report
+for SHAs); main untouched; PR #1/#2 open and unmerged. No paid
+model calls, verifications, or PRs in this step.
+
 ## Later steps
 
 Append one section per milestone with files touched and verification results.

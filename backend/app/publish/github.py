@@ -156,15 +156,31 @@ def create_branch(repo: str, branch: str, sha: str, token: str,
 
 def find_open_pr(repo: str, branch: str, token: str,
                  transport: Optional[httpx.BaseTransport] = None) -> Optional[dict]:
-    """Open PR (if any) already filed from the repair branch."""
-    body = _call("GET", f"/repos/{repo}/pulls?head={branch}&state=open", token,
-                 transport=transport, action="search existing PRs")
-    if not isinstance(body, list) or not body:
+    """Open PR (if any) actually filed from the repair branch.
+
+    GitHub's ``head`` filter is unreliable for slash branches (it can
+    return unrelated open PRs), so every returned PR's head ref is
+    verified client-side and anything else is ignored.
+    """
+    owner = repo.split("/")[0]
+    body = _call("GET", f"/repos/{repo}/pulls?head={owner}:{branch}&state=open",
+                 token, transport=transport, action="search existing PRs")
+    if not isinstance(body, list):
         return None
-    first = body[0]
-    if not isinstance(first, dict) or not first.get("number"):
-        return None
-    return first
+    for pr in body:
+        if not isinstance(pr, dict) or not pr.get("number"):
+            continue
+        if (pr.get("head") or {}).get("ref") == branch:
+            return pr
+    return None
+
+
+def get_pr(repo: str, number: int, token: str,
+           transport: Optional[httpx.BaseTransport] = None) -> Optional[dict]:
+    """Fetch one PR by number; None when it does not exist."""
+    body = _call("GET", f"/repos/{repo}/pulls/{number}", token,
+                 transport=transport, expect=(200, 404), action="read PR")
+    return body if isinstance(body, dict) else None
 
 
 def create_pull(repo: str, title: str, body_text: str, head: str, base: str, token: str,

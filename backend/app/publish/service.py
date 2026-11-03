@@ -88,7 +88,8 @@ def _default_title(incident: Any) -> str:
 
 def build_preview(candidate_id: str, verification_id: str, pr_title: str = "",
                   base_branch: str = BASE_BRANCH, token: str = "",
-                  transport: Optional[httpx.BaseTransport] = None) -> PublicationPreview:
+                  transport: Optional[httpx.BaseTransport] = None,
+                  notes: str = "") -> PublicationPreview:
     """Assemble the exact publish preview, including a full preflight.
 
     Read-only: performs GitHub reads but no writes. Raises PublishError
@@ -106,7 +107,8 @@ def build_preview(candidate_id: str, verification_id: str, pr_title: str = "",
         raise PublishError("Linked incident or investigation record is missing.")
     title = check_title(pr_title) if pr_title else _default_title(incident)
     body = prbody.build_pr_body(incident=incident, candidate=candidate,
-                                verification=verification, investigation=investigation)
+                                verification=verification, investigation=investigation,
+                                notes=notes)
     return PublicationPreview(
         repo=candidate.repo, base_branch=base_branch, base_sha=candidate.baseline_sha,
         branch=branch, changed_files=list(candidate.changed_paths), diff=candidate.diff,
@@ -245,7 +247,8 @@ def _reconcile_existing(candidate_id: str, token: str,
 
 def publish(candidate_id: str, verification_id: str, pr_title: str,
             base_branch: str = BASE_BRANCH, token: str = "",
-            transport: Optional[httpx.BaseTransport] = None) -> Publication:
+            transport: Optional[httpx.BaseTransport] = None,
+            notes: str = "") -> Publication:
     """Publish the verified repair (explicit Publish only — performs writes).
 
     Re-runs full preflight, builds the repair commit from the pinned
@@ -257,26 +260,52 @@ def publish(candidate_id: str, verification_id: str, pr_title: str,
         raise PublishBusy("Another publication is running; retry shortly.")
     try:
         return _publish_locked(candidate_id, verification_id, pr_title, base_branch,
-                               token, transport)
+                               token, transport, notes=notes)
     finally:
         _semaphore().release()
 
 
+def _recorded_pr_matches_branch(record: Publication, token: str,
+                                transport: Optional[httpx.BaseTransport]) -> bool:
+    """Confirm a published record's PR was really filed from its branch."""
+    if not record.pr_number:
+        return True  # legacy record without a number: nothing to check
+    pr = github.get_pr(record.repo, record.pr_number, token, transport=transport)
+    if pr is None:
+        return False
+    return (pr.get("head") or {}).get("ref") == record.branch
+
+
 def _publish_locked(candidate_id: str, verification_id: str, pr_title: str,
                     base_branch: str, token: str,
-                    transport: Optional[httpx.BaseTransport]) -> Publication:
+                    transport: Optional[httpx.BaseTransport],
+                    notes: str = "") -> Publication:
     if not token:
         raise PublishError("GITHUB_TOKEN is not configured; publication refused.")
     for record in store.list_for_candidate(candidate_id):
         if record.state == "published" and record.verification_id == verification_id:
-            return record  # idempotent: exact same publication already done
+            if _recorded_pr_matches_branch(record, token, transport):
+                return record  # idempotent: exact same publication already done
+            # A "published" record pointing at another branch's PR is not
+            # this publication: retire it and continue to a fresh one.
+
+            def mark_mismatch(item: Publication,
+                              number: Optional[int] = record.pr_number) -> None:
+                item.state = "failed"
+                item.detail = (f"superseded: recorded PR #{number} belongs to a "
+                               "different branch; republishing")
+
+            store.update(record.id, mark_mismatch)
+            store.add_event(record.id, "recover",
+                            f"recorded PR #{record.pr_number} mismatched {record.branch}")
     recovered = _reconcile_existing(candidate_id, token, transport)
     if recovered is not None and recovered.verification_id == verification_id:
         return recovered
 
     try:
         preview = build_preview(candidate_id, verification_id, pr_title=pr_title,
-                                base_branch=base_branch, token=token, transport=transport)
+                                base_branch=base_branch, token=token, transport=transport,
+                                notes=notes)
     except PublishError as exc:
         raise PublishError(f"Preflight failed: {exc}")
     if not preview.preflight_ok:

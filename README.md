@@ -346,6 +346,13 @@ change; open and unmerged, merge left to a human. This is an owned
 evaluation-fixture repair verified within the tested scope; checks
 ran in Modal, not GitHub CI (see NEW_WORK.md).
 
+## Hackathon submission
+
+Start here: [SUBMISSION.md](SUBMISSION.md) — live links, demo
+walkthrough, architecture, event-vs-foundation scope, and honest
+limitations. The submitted source is branch `step12/deploy-prep`,
+not `main`.
+
 ## Modal deployment (Steps 12-13 — LIVE single-developer demo)
 
 The backend is deployed to Modal and the production frontend is

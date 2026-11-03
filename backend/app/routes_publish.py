@@ -44,6 +44,7 @@ class PreviewRequest(BaseModel):
     verification_id: str = Field(min_length=1, max_length=64)
     pr_title: str = Field(default="", max_length=200)
     base_branch: str = Field(default=BASE_BRANCH, max_length=100)
+    notes: str = Field(default="", max_length=2000)
 
 
 class PublishRequest(BaseModel):
@@ -51,6 +52,7 @@ class PublishRequest(BaseModel):
     verification_id: str = Field(min_length=1, max_length=64)
     pr_title: str = Field(default="", max_length=200)
     base_branch: str = Field(default=BASE_BRANCH, max_length=100)
+    notes: str = Field(default="", max_length=2000)
 
 
 @router.post("/publications/preview", response_model=PublicationPreview)
@@ -61,7 +63,7 @@ def preview_publication(payload: PreviewRequest) -> PublicationPreview:
         return build_preview(
             payload.candidate_id, payload.verification_id,
             pr_title=payload.pr_title, base_branch=payload.base_branch or BASE_BRANCH,
-            token=config.get_github_token())
+            token=config.get_github_token(), notes=payload.notes)
     except PublishError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
@@ -74,7 +76,7 @@ def publish_repair(payload: PublishRequest) -> Publication:
         return publish(
             payload.candidate_id, payload.verification_id, payload.pr_title,
             base_branch=payload.base_branch or BASE_BRANCH,
-            token=config.get_github_token())
+            token=config.get_github_token(), notes=payload.notes)
     except PublishBusy as exc:
         raise HTTPException(status_code=429, detail=str(exc))
     except PublishConflict as exc:

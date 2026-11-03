@@ -225,6 +225,7 @@ class FakeGitHub:
         self.calls: list[tuple[str, str]] = []
         self.posted_trees: list[dict] = []
         self.posted_prs: list[dict] = []
+        self.prs_by_number: dict[int, dict] = {}  # GET /pulls/{n} answers
 
     def seed_branch(self, branch, sha):
         self.branches[branch] = sha
@@ -296,8 +297,18 @@ class FakeGitHub:
                 self.branches[body["ref"].split("refs/heads/", 1)[1]] = body["sha"]
                 return httpx.Response(201, json={"ref": body["ref"]})
             if request.method == "GET" and "/pulls?" in url:
+                # Mirrors real GitHub: the head filter is NOT applied here,
+                # so callers must verify the head ref themselves.
                 pulls = [self.open_pr] if self.open_pr else []
                 return httpx.Response(200, json=pulls)
+            if request.method == "GET" and "/pulls/" in url:
+                try:
+                    number = int(url.rsplit("/", 1)[-1].split("?")[0])
+                except ValueError:
+                    return httpx.Response(404, json={"message": "nope"})
+                if number in self.prs_by_number:
+                    return httpx.Response(200, json=self.prs_by_number[number])
+                return httpx.Response(404, json={"message": "nope"})
             if request.method == "POST" and url.rstrip("/").endswith("/pulls"):
                 if self.pr_exists_race:
                     return httpx.Response(
@@ -305,9 +316,11 @@ class FakeGitHub:
                 body = json.loads(request.content.decode())
                 self.posted_prs.append(body)
                 number = 7
-                return httpx.Response(201, json={
-                    "number": number,
-                    "html_url": f"https://github.com/{REPO}/pull/{number}"})
+                created = {"number": number,
+                           "html_url": f"https://github.com/{REPO}/pull/{number}",
+                           "head": {"ref": body["head"]}}
+                self.prs_by_number[number] = created
+                return httpx.Response(201, json=created)
             return httpx.Response(404, json={"message": "nope"})
 
         return httpx.MockTransport(handler)
@@ -353,6 +366,24 @@ def test_preview_ok_shows_exact_change(pub_env):
     assert "ghp-dummy" not in preview.pr_body
     assert "127.0.0.1" not in preview.pr_body
     assert "localhost" not in preview.pr_body.lower()
+
+
+def test_preview_notes_section_is_opt_in(pub_env):
+    from app.publish.service import build_preview
+
+    incident, run, inv = make_records()
+    candidate = make_candidate(incident, run, inv)
+    verification = make_verification(candidate, incident, run, inv)
+    fake = FakeGitHub()
+    plain = build_preview(candidate.id, verification.id, pr_title="",
+                          token="ghp-dummy", transport=fake.transport())
+    assert "## Reviewer notes" not in plain.pr_body
+    noted = build_preview(candidate.id, verification.id, pr_title="",
+                          token="ghp-dummy", transport=fake.transport(),
+                          notes="Alternative to PR #1.")
+    assert "## Reviewer notes" in noted.pr_body
+    assert "Alternative to PR #1." in noted.pr_body
+    assert noted.preflight_ok
 
 
 def test_preview_refuses_unapproved(pub_env):
@@ -613,13 +644,65 @@ def test_publish_reuses_existing_branch_and_pr(pub_env):
     fake = FakeGitHub()
     fake.seed_branch(branch, REPAIR_COMMIT)
     fake.open_pr = {"number": 9,
-                    "html_url": f"https://github.com/{REPO}/pull/9"}
+                    "html_url": f"https://github.com/{REPO}/pull/9",
+                    "head": {"ref": branch}}
     record = publish(candidate.id, verification.id, "Fix the overlay",
                      token="ghp-dummy", transport=fake.transport())
     assert record.state == "published"
     assert record.pr_number == 9
     assert fake.posts("/git/refs") == []
     assert fake.posted_prs == []
+
+
+def test_publish_ignores_foreign_open_pr(pub_env):
+    """An unrelated open PR is never adopted, even if search returns it."""
+    from app.publish.service import branch_name, publish
+
+    incident, run, inv = make_records()
+    candidate = make_candidate(incident, run, inv)
+    verification = make_verification(candidate, incident, run, inv)
+    branch = branch_name(candidate.id)
+    fake = FakeGitHub()
+    fake.open_pr = {"number": 1,
+                    "html_url": f"https://github.com/{REPO}/pull/1",
+                    "head": {"ref": "buglens/fix-someone-else"}}
+    record = publish(candidate.id, verification.id, "Fix the overlay",
+                     token="ghp-dummy", transport=fake.transport())
+    assert record.state == "published"
+    assert record.pr_number == 7  # a new PR, not the foreign #1
+    assert len(fake.posted_prs) == 1
+    assert fake.posted_prs[0]["head"] == branch
+
+
+def test_publish_retires_mismatched_record(pub_env):
+    """A published record pointing at another branch's PR is superseded."""
+    import uuid
+    from app.publish import store as publish_store
+    from app.publish.models import Publication
+    from app.publish.service import branch_name, publish
+
+    incident, run, inv = make_records()
+    candidate = make_candidate(incident, run, inv)
+    verification = make_verification(candidate, incident, run, inv)
+    branch = branch_name(candidate.id)
+    now = publish_store.utcnow()
+    stale = Publication(
+        id=uuid.uuid4().hex, incident_id=incident.id, candidate_id=candidate.id,
+        verification_id=verification.id, repo=REPO, base_branch="main",
+        base_sha=SHA, branch=branch, pr_title="Fix the overlay",
+        state="published", detail="published; never auto-merged",
+        pr_number=1, pr_url=f"https://github.com/{REPO}/pull/1",
+        commit_sha=REPAIR_COMMIT, created_at=now, updated_at=now)
+    publish_store.create(stale)
+    fake = FakeGitHub()
+    fake.prs_by_number[1] = {"number": 1, "head": {"ref": "buglens/fix-someone-else"}}
+    record = publish(candidate.id, verification.id, "Fix the overlay",
+                     token="ghp-dummy", transport=fake.transport())
+    assert record.id != stale.id
+    assert record.state == "published"
+    assert record.pr_number == 7
+    assert publish_store.get(stale.id).state == "failed"
+    assert len(fake.posted_prs) == 1
 
 
 def test_publish_recovers_orphaned_intent(pub_env):
@@ -646,7 +729,8 @@ def test_publish_recovers_orphaned_intent(pub_env):
         REPAIR_COMMIT, BRANCH_TREE,
         f"Fix the overlay\n\nVerified-by: BugLens {verification.id}")
     fake.open_pr = {"number": 11,
-                    "html_url": f"https://github.com/{REPO}/pull/11"}
+                    "html_url": f"https://github.com/{REPO}/pull/11",
+                    "head": {"ref": branch}}
     record = publish(candidate.id, verification.id, "Fix the overlay",
                      token="ghp-dummy", transport=fake.transport())
     assert record.id == orphan.id

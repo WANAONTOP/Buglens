@@ -70,13 +70,15 @@ def supported_cause(investigation: Any) -> str:
 
 
 def build_pr_body(*, incident: Any, candidate: Any, verification: Any,
-                  investigation: Any) -> str:
+                  investigation: Any, notes: str = "") -> str:
     """Render the PR body from persisted records only.
 
     Everything here comes from stored incidents/candidates/verifications;
     nothing is invented. No credentials, private recordings, trace
     contents, or localhost URLs are included — the checks ran externally
-    in Modal, so no GitHub CI claim is made either.
+    in Modal, so no GitHub CI claim is made either. The optional
+    developer-supplied ``notes`` (reviewer context, never code) render
+    as a trailing section.
     """
     tested = verification.tested
     if tested is not None and tested.file_hashes:
@@ -89,6 +91,8 @@ def build_pr_body(*, incident: Any, candidate: Any, verification: Any,
     explanations = "\n".join(
         f"- `{item.path}`: {item.explanation}" for item in (candidate.explanations or []))
     risks = candidate.regression_risks or []
+    trimmed = (notes or "").strip()[:2000]
+    extra = ["## Reviewer notes", "", trimmed, ""] if trimmed else []
     return "\n".join([
         "## Summary",
         "",
@@ -137,4 +141,5 @@ def build_pr_body(*, incident: Any, candidate: Any, verification: Any,
         "> fixture used to exercise BugLens end to end; it is not a real",
         "> customer incident.",
         "",
+        *extra,
     ])
