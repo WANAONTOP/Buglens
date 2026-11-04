@@ -202,3 +202,34 @@ green regardless of the fixture's expected failure.
 - `NEW_WORK.md` — record of existing foundations and new work.
 - `fixtures/storefront/` — owned broken evaluation app + Playwright repro.
 - `.buglens.json` — reproduction contract (validated, never auto-executed).
+
+## Troubleshooting (Windows)
+
+### PowerShell blocks virtual environment activation
+
+If PowerShell prevents `.venv\Scripts\Activate.ps1` from running, execute:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+This changes the execution policy only for the current PowerShell session.
+
+### Frontend cannot connect to backend
+
+1. Verify the backend is running at `http://127.0.0.1:8000`.
+2. Open `http://127.0.0.1:8000/health` and check that it responds.
+3. Confirm the frontend development server is running.
+4. Verify the API token entered in the frontend matches `BUGLENS_API_TOKEN` in `.env`.
+5. Check the browser developer console for network errors.
+
+### Port already in use
+
+If port `8000` is occupied, identify the process using:
+
+```powershell
+Get-NetTCPConnection -LocalPort 8000 -State Listen
+```
+
+Inspect the process before stopping it. Alternatively, configure the backend and frontend to use matching alternative ports.
