@@ -377,4 +377,5 @@ Acceptance checks:
 - [x] No backend redeploy, paid jobs, approvals, PRs, or pushes.
 - [x] Hosted screen-recording check (observed 9.0s take → 201 →
   byte-exact retrieval → refresh persistence).
-- [ ] Push `step12/deploy-prep` so the latest source is public (main/PRs untouched).
+- [x] Push `step12/deploy-prep` so the latest source is public (main/PRs untouched).
+- [x] Submission doc corrections pushed (incident link, demo run, recording, sign-in, attribution).

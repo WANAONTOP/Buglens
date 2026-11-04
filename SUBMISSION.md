@@ -20,21 +20,24 @@ creates a GitHub PR only after seven evidence-based gates pass.
   [#2 — remove overlay](https://github.com/WANAONTOP/Buglens/pull/2)
 
 Interactive access needs a separately supplied demo API token:
-the hosted URL alone does not grant authenticated access. Enter the
-token once at the site's token prompt. The token is not published
-in this repository.
+the hosted URL alone does not grant authenticated access. When
+signed out, the site opens a "Connect to workspace" dialog: paste
+the token into "Access token" and choose "Connect". The token is
+validated, then kept only in that tab's session storage; Settings
+holds sign-out, token change, and backend diagnostics. The token
+is not published in this repository.
 
 ## Demo walkthrough (hosted incident)
 
 Direct link (token required):
-<https://frontend-jade-rho-52.vercel.app/incidents/54ce59632c254778bbb8fb3b2f8a8c79>
+<https://frontend-jade-rho-52.vercel.app/#incident=54ce59632c254778bbb8fb3b2f8a8c79>
 
 1. **Sign in** with the demo token (see above).
 2. **Incident** `54ce…8c79`: "Checkout blocked by overlay" on
    fixture `fixtures/storefront/`, pinned baseline `9174a460…`.
    The incident detail shows the uploaded developer screenshot,
    reproduction steps, and permitted paths.
-3. **Reproduction run** `2224…` (tab/panel "Reproduction"):
+3. **Reproduction run** `8ebd…` (tab/panel "Reproduction"):
    REPRODUCED — broken route blocks the Pay button click (overlay
    hit-test evidence), control route passes; before-screenshots,
    DOM geometry, console output, and the contract hash are listed
@@ -103,20 +106,18 @@ Each was independently verified (different verification runs,
 frozen to its own patch) and each PR discloses its tested scope.
 Neither is merged; PR #2 must not be read as superseding PR #1.
 
-## Event work vs prior foundations
+## Event work vs dependencies
 
-Built/reviewed in this submission cycle (see `NEW_WORK.md` for
-the dated log): Modal deployment packaging + volume/worker
-correctness fixes; production frontend hosting + locked CORS;
-Meta adapter configuration on the hosted backend; the full
-hosted screenshot→reproduction→investigation→candidate→
-verification→PR workflow; publication fixes and regression
-tests; and this submission document.
-
-Pre-existing project foundations reused: the FastAPI/React
-scaffolding, evidence-intake flow, provider adapter shapes,
-fixture design, contracts, gate policy, and the PR #1 lineage
-— all recorded in `NEW_WORK.md` and `PLAN.md`. Third-party
+Everything in this repository was built during this project:
+the git history on `step12/deploy-prep` runs from the initial
+source commit through intake, providers, fixture, reproduction,
+investigation, candidate, verification, PR #1, Modal deployment,
+hosted frontend, Meta configuration, the full hosted
+screenshot→reproduction→investigation→candidate→verification→PR
+workflow, publication fixes, this submission document, and the
+UI/upload release (see `NEW_WORK.md` for the dated per-step
+log; commits are dated 2026-11-03/04). Earlier milestones are
+part of the same build, not prior work. Only third-party
 services (Meta models, Modal, GitHub, Vercel) are dependencies,
 not our work.
 
@@ -139,8 +140,10 @@ not our work.
   — the upload did not directly drive the root cause.
 - **Access**: single shared demo token, entered manually;
   multi-user auth/roles are out of scope.
-- **Screen recording**: the Record/Stop/playback/capture UI is
-  implemented, but a real OS-picker recording is still pending
-  manual verification (needs a headed browser + user gesture).
+- **Screen recording**: passed with a real OS-picker recording on
+  the hosted site — a 9.036-second, 1246×800 WebM with successful
+  upload, byte-exact retrieval, and persistence after refresh
+  (an earlier instant-stop take produced a 110-byte file the UI
+  correctly flags as needing attention).
 - Baseten was implemented as optional and was not needed;
   the live demo used Spark, SAM, and Wonder only.

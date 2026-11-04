@@ -1003,8 +1003,10 @@ persistence, desktop/mobile zero page overflow (mobile tab strip is
 swipeable, verified reachable). Only 4xx/log noise: the intentional
 wrong-token 401 and the known benign favicon 404. Screenshots
 inspected: no clipping. One transient Modal load timeout passed on
-retry. No paid jobs, approvals, PRs, merges, or pushes (latest source
-is local-only on `step12/deploy-prep`; main and PR #1/#2 untouched).
+retry. No paid jobs, approvals, PRs, or merges. The branch (with a
+doc-correction follow-up fixing the submission incident link, demo
+run reference, recording status, sign-in instructions, and
+attribution) is pushed to origin; main and PR #1/#2 untouched.
 Hosted screen recording PASSED on retake (first take was stopped
 instantly: 110B header-only file, correctly flagged "Needs
 attention" in the UI). Observed OS picker → 9.0s recording →

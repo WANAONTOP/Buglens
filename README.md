@@ -7,6 +7,16 @@ and creates a GitHub PR only after verification passes.
 
 Built for the Meta hackathon.
 
+**Links:** live website
+<https://frontend-jade-rho-52.vercel.app> ·
+submission walkthrough
+[SUBMISSION.md](SUBMISSION.md) ·
+current implementation branch
+<https://github.com/WANAONTOP/Buglens/tree/step12/deploy-prep>.
+Review that branch, not `main`: `main` remains the pinned
+evaluation baseline (`9174a46…`), while all application work
+continues on `step12/deploy-prep`.
+
 ## Prerequisites
 
 - Node.js + npm
@@ -42,7 +52,8 @@ python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
 The backend loads `.env` on startup. The frontend asks for the same token in
-the "API token" card and keeps it in that tab's session storage only.
+the "Connect to workspace" dialog (auto-opened when signed out) and keeps it
+in that tab's session storage only; Settings holds sign-out and diagnostics.
 
 ## Start the backend
 
