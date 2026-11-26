@@ -33,6 +33,7 @@ class ModelCall(BaseModel):
 class SparkResult(BaseModel):
     call: ModelCall
     frames: list[str] = Field(default_factory=list)  # evidence refs sent
+    input_notes: list[str] = Field(default_factory=list)
     observations: list[str] = Field(default_factory=list)
     hypotheses: list[str] = Field(default_factory=list)
     raw_text: str = ""
@@ -90,6 +91,7 @@ class WonderResult(BaseModel):
     raw_text: str = ""
     parsed: bool = True
     parse_note: str = ""
+    visual_context_refs: list[str] = Field(default_factory=list)
 
 
 class InvestigationEvent(BaseModel):

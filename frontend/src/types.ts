@@ -125,6 +125,7 @@ export interface ModelCall {
 export interface SparkResult {
   call: ModelCall
   frames: string[]
+  input_notes?: string[]
   observations: string[]
   hypotheses: string[]
   raw_text: string
@@ -182,6 +183,7 @@ export interface WonderResult {
   raw_text: string
   parsed: boolean
   parse_note: string
+  visual_context_refs?: string[]
 }
 
 export interface InvestigationEvent {

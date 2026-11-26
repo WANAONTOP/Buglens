@@ -101,7 +101,7 @@ def test_status_reports_configured_untested_when_keys_present(client, token, mon
     assert "verified" not in states.values()
 
 
-def test_status_requires_app_auth(client):
+def test_status_requires_app_auth(client, token):
     assert client.get("/api/providers/status").status_code == 401
     assert client.post("/api/providers/meta/smoke").status_code == 401
 

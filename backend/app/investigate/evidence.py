@@ -14,14 +14,15 @@ being silently omitted.
 
 from __future__ import annotations
 
+import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from .. import config
 from .. import media
 from .. import store as incident_store
-from ..models import Incident
+from ..models import Evidence, Incident
 from ..repro import store as repro_store
 from ..repro.models import ReproRun
 from .models import EvidenceItem
@@ -40,6 +41,13 @@ class InvestigationBlocked(Exception):
 
 
 @dataclass
+class VisualFrame:
+    ref: str
+    content_type: str
+    content: bytes
+
+
+@dataclass
 class EvidencePackage:
     items: list[EvidenceItem]
     absent: list[str]
@@ -48,6 +56,28 @@ class EvidencePackage:
     broken_frame_artifact: str
     broken_frame_w: int
     broken_frame_h: int
+    uploaded_frames: list[VisualFrame] = field(default_factory=list)
+
+
+def _uploaded_image_bytes(evidence: Evidence, incident_id: str) -> bytes:
+    """Read only this incident's bounded, content-identified, hash-checked image."""
+    if evidence.incident_id != incident_id:
+        raise InvestigationBlocked("uploaded image belongs to another incident")
+    try:
+        path = incident_store.safe_artifact_path(evidence.stored_filename)
+        if path.stat().st_size != evidence.size_bytes:
+            raise InvestigationBlocked("uploaded image size differs from its recorded evidence")
+        with path.open("rb") as handle:
+            content = handle.read(config.MAX_IMAGE_BYTES + 1)
+        if len(content) > config.MAX_IMAGE_BYTES:
+            raise InvestigationBlocked("uploaded image exceeds the image size limit")
+        if hashlib.sha256(content).hexdigest() != evidence.sha256:
+            raise InvestigationBlocked("uploaded image hash differs from its recorded evidence")
+        media.identify_media(path, evidence.content_type, "image")
+        return content
+    except (OSError, ValueError) as exc:
+        # Do not include private storage paths or raw OS errors in the report.
+        raise InvestigationBlocked("uploaded image is missing, unsafe, or unreadable") from exc
 
 
 def optional_artifact_bytes(run: ReproRun, name: str) -> bytes:
@@ -68,7 +98,10 @@ def _artifact_bytes(run: ReproRun, name: str) -> bytes:
         raise InvestigationBlocked(f"run has an unsafe stored path for: {name}")
     if not path.exists():
         raise InvestigationBlocked(f"artifact bytes missing from disk: {name}")
-    return path.read_bytes()
+    content = path.read_bytes()
+    if hashlib.sha256(content).hexdigest() != artifact.sha256:
+        raise InvestigationBlocked(f"artifact hash mismatch: {name}")
+    return content
 
 
 def _png_dims(run: ReproRun, name: str) -> tuple[int, int]:
@@ -129,6 +162,9 @@ def build_package(incident: Incident, run: ReproRun) -> EvidencePackage:
         raise InvestigationBlocked("driver result is missing a route outcome")
 
     items: list[EvidenceItem] = []
+    uploaded_frames: list[VisualFrame] = []
+    upload_notes: list[str] = []
+    image_bytes = 0
     counter = 0
 
     def add(origin: str, kind: str, summary: str, **fields: object) -> str:
@@ -142,12 +178,31 @@ def build_package(incident: Incident, run: ReproRun) -> EvidencePackage:
         dims = ""
         if evidence.width is not None and evidence.height is not None:
             dims = f" {evidence.width}x{evidence.height}"
-        add(
+        ref = add(
             "uploaded",
             "screenshot" if evidence.kind != "video" else "video",
             f"developer {evidence.kind}: {evidence.original_filename} ({evidence.size_bytes}B{dims})",
-            data={"evidence_id": evidence.id, "sha256": evidence.sha256},
+            data={"evidence_id": evidence.id, "sha256": evidence.sha256,
+                  "timestamp_ms": evidence.timestamp_ms,
+                  "source_video_evidence_id": evidence.source_video_evidence_id,
+                  "clicked_point": evidence.clicked_point.model_dump() if evidence.clicked_point else None},
         )
+        if evidence.kind == "video":
+            upload_notes.append(f"{ref}: video stored but not sent to the image model; capture and upload a frame to analyze it.")
+            continue
+        if len(uploaded_frames) >= config.INVESTIGATE_MAX_UPLOADED_IMAGES:
+            upload_notes.append(f"{ref}: not sent to Spark; the {config.INVESTIGATE_MAX_UPLOADED_IMAGES}-image upload budget was reached.")
+            continue
+        if (evidence.size_bytes > config.MAX_IMAGE_BYTES or
+                image_bytes + evidence.size_bytes > config.INVESTIGATE_MAX_UPLOADED_IMAGE_BYTES):
+            upload_notes.append(f"{ref}: not sent to Spark; the uploaded-image byte budget was reached.")
+            continue
+        try:
+            content = _uploaded_image_bytes(evidence, incident.id)
+        except InvestigationBlocked as exc:
+            raise InvestigationBlocked(f"{ref}: {exc}") from exc
+        uploaded_frames.append(VisualFrame(ref, evidence.content_type, content))
+        image_bytes += len(content)
     add(
         "baseline",
         "annotation",
@@ -269,6 +324,7 @@ def build_package(incident: Incident, run: ReproRun) -> EvidencePackage:
         "per-action timestamps were not captured by the driver; phase timing "
         "comes from run events and the full traces instead",
     ]
+    absent.extend(upload_notes)
     frame_w, frame_h = _png_dims(run, "broken-before.png")
     return EvidencePackage(
         items=items,
@@ -278,4 +334,5 @@ def build_package(incident: Incident, run: ReproRun) -> EvidencePackage:
         broken_frame_artifact="broken-before.png",
         broken_frame_w=frame_w,
         broken_frame_h=frame_h,
+        uploaded_frames=uploaded_frames,
     )

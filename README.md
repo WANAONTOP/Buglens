@@ -231,13 +231,43 @@ An investigation runs on a `done` / `REPRODUCED` reproduction whose SHA
 matches the incident pin and whose artifacts are complete; anything else
 is reported BLOCKED. It builds a stable evidence package (E-numbers over
 uploaded, baseline, broken-route, and control-route items), calls
-`muse-spark-1.3` on the broken/control frames, segments the concrete Pay
+`muse-spark-1.3` on the broken/control frames and selected uploaded images, segments the concrete Pay
 button with `sam-3.1` (the transparent overlay is established by DOM and
 hit-testing, never by vision), maps DOM identities to source at the
 pinned commit (exact / inferred / unknown), and asks `muse-wonder-1.0`
 for ranked root-cause hypotheses with evidence refs and validated
 citations. One background job at a time; results persist across
 refresh/restart and appear in the incident detail page.
+
+### Uploaded image analysis (November 25 improvement)
+
+New investigations attach up to three uploaded screenshots or captured
+video frames to Spark, in upload order, with a combined 12 MiB upload
+budget and the existing 10 MiB per-image limit. Selected images must
+match their stored size, SHA-256, content type, and incident ownership;
+missing or changed bytes block the investigation before provider calls.
+Read reproduction artifacts are also hash-checked. Files beyond the
+budget stay in the evidence package with an explicit omission note.
+Whole videos are not sent to the image model: capture and upload a frame
+from the preview to include it in analysis.
+
+Spark receives the actual attached-image references, original click-point
+coordinates, video-frame timestamps, and the developer's reported behavior.
+It is asked to compare uploads with reproduced images and report mismatches.
+Wonder now receives bounded Spark observations and causal guesses plus SAM
+geometry, alongside DOM evidence and pinned source. Model interpretations
+remain fallible; they do not replace reproduction or verification gates.
+Unknown evidence citations are flagged instead of accepted as supporting refs.
+
+The Diagnosis panel distinguishes images sent to Spark, stored-only videos,
+and omitted images, and shows the visual context passed to Wonder. Sending
+an image does not guarantee that a model cites it or diagnoses it correctly.
+Older records retain their original inputs and results; defaults keep them
+readable and do not claim that historical uploads were analyzed.
+
+Validation for this improvement uses mocked provider HTTP and local browser
+checks. It has not been rerun with paid models or deployed; the historical
+hosted demo below remains evidence of the earlier implementation.
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |

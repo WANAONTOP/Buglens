@@ -1013,3 +1013,35 @@ attention" in the UI). Observed OS picker → 9.0s recording →
 preview metadata 1246×800 → POST → 201 in ~7s → byte-exact
 retrieval (1334245/1334245) → all 3 items present after refresh.
 Only log noise: favicon 404 + benign preview-blob aborts.
+
+## November 25, 2026 — uploaded visual evidence and model handoff
+
+Post-submission improvement, separate from the original hackathon work.
+Based on `57090b2` from `step12/deploy-prep`, implemented in an isolated
+checkout on `codex/visual-evidence-pipeline`.
+
+- Spark now receives selected uploaded screenshots/video frames as real
+  image inputs, with stable E-references, marked points, timestamps and
+  reported behavior. Selection is bounded to three images / 12 MiB total;
+  skipped images and stored-only videos are explained explicitly.
+- Selected upload bytes are checked for incident ownership, safe paths,
+  size, SHA-256 and detected content type before model requests. Read
+  reproduction artifacts must match their recorded hashes too.
+- Wonder receives bounded, labeled Spark observations/guesses and SAM
+  geometry. Unknown E-references are removed from supporting citations
+  and recorded as unvalidated; DOM and pinned source remain authoritative
+  for hidden-element and code-location claims.
+- The Diagnosis panel displays actual image inputs and model handoff,
+  including honest defaults for historical records. No historical evidence,
+  approvals, verification reports or repair PRs were rewritten.
+- Fixed the provider-auth test's ambient-token dependency by using its
+  existing test-token fixture. Baseline in this clean checkout was
+  194 passed / 1 failed; final backend suite is 211 passed (16 new cases).
+  The pre-existing test-client deprecation warning remains.
+- Production TypeScript/Vite build passes. Provider responses in regression
+  tests are mocked; no paid model call, Modal job or production deployment
+  was performed for this change.
+- Headless Edge checks on the production build with intercepted API
+  fixtures passed: new and legacy image provenance, omitted video/image
+  labels, missing-control notice, and Wonder handoff. Zero page errors;
+  all app API requests were intercepted, with no live model/backend calls.

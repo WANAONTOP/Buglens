@@ -176,7 +176,7 @@ def run_investigation(
                      f"{sam.call.latency_ms}ms ({sam.note})")
         _check(cancel_event, deadline)
 
-        wonder = run_wonder(adapter, incident, package, mappings, files, tree_paths)
+        wonder = run_wonder(adapter, incident, package, mappings, files, tree_paths, spark, sam)
         save(wonder=wonder)
         event("wonder", f"{wonder.call.model}: {len(wonder.hypotheses)} "
                         f"root-cause hypotheses in {wonder.call.latency_ms}ms"

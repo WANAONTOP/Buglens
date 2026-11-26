@@ -297,6 +297,29 @@ export default function InvestigationPanel({ token, incident }: Props) {
           {selected.spark !== null && (
             <>
               <h4>Visual interpretation ({selected.spark.call.model})</h4>
+              <p className="hint">
+                Images sent to Spark: {renderRefs(selected.spark.frames)}. These are model inputs;
+                a supporting citation below shows whether the diagnosis used an image.
+              </p>
+              {selected.evidence.some((item) => item.origin === 'uploaded') && (
+                <ul className="evidence-list" aria-label="Uploaded image analysis">
+                  {selected.evidence.filter((item) => item.origin === 'uploaded').map((item) => (
+                    <li key={item.ref} className="evidence-item">
+                      <span className="evidence-name">{item.ref} · {item.summary}</span>
+                      <span className="evidence-meta">
+                        {selected.spark!.frames.includes(item.ref)
+                          ? 'Image sent to Spark'
+                          : item.kind === 'video'
+                            ? 'Video stored only — capture and upload a frame for image analysis'
+                            : 'Image not sent to Spark in this run'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {(selected.spark.input_notes ?? []).map((note, index) => (
+                <p className="hint" key={index}>{note}</p>
+              ))}
               {selected.spark.parsed ? (
                 <>
                   <h4>Observations</h4>
@@ -344,6 +367,12 @@ export default function InvestigationPanel({ token, incident }: Props) {
           {selected.wonder !== null && (
             <>
               <h4>Root-cause hypotheses ({selected.wonder.call.model})</h4>
+              <p className="hint">
+                {(selected.wonder.visual_context_refs ?? []).length > 0
+                  ? <>Visual model context supplied for {renderRefs(selected.wonder.visual_context_refs!)}.
+                    {' '}Observations and segmentation are cross-checked against browser and source evidence.</>
+                  : 'This run has no recorded visual-model handoff to Wonder.'}
+              </p>
               {selected.wonder.parsed ? (
                 <div>
                   {selected.wonder.hypotheses.map((h) => (
@@ -422,7 +451,7 @@ export default function InvestigationPanel({ token, incident }: Props) {
           )}
           {selected.absent_evidence.length > 0 && (
             <>
-              <h4>Not captured</h4>
+              <h4>Evidence limitations</h4>
               <ul className="blocker-list">
                 {selected.absent_evidence.map((note, i) => (
                   <li key={i}>{note}</li>
