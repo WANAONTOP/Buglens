@@ -215,6 +215,833 @@ Verification results (2026-11-03):
 - Follow-up: Step 4 documentation committed separately from the initial
   source commit, which is preserved as-is (no amend, no force-push).
 
+## Step 5 — Modal reproduction (2026-11-03)
+
+Target: `WANAONTOP/Buglens` @ `main` =
+`9174a4607269282babff247f04fe6418d0bcc8ac`, app
+`fixtures/storefront/`, manifest repo-root `.buglens.json`.
+
+Changes (uncommitted; HEAD stays at the published baseline `9174a46`):
+
+- `backend/app/repro/`: `github_source.py` (ref→SHA, tree, blobs over
+  GitHub REST, sanitized), `contract.py` (validate, resolve, reject
+  traversal/symlink escapes, freeze + sha256), `store.py` (per-run
+  records, events, artifacts, frozen contract), `jobs.py` (one worker,
+  cancellation, orphan reconcile), `runner.py` (Modal pipeline: tarball
+  fetch at the pinned SHA, manifest-hash fidelity check, frozen
+  install, Linux Chromium, readiness wait, driver, bounded base64
+  artifact pull, server kill, sandbox terminate, server-side classify),
+  `driver.cjs` (both routes, hit-testing, occlusion, confirmation).
+- `backend/app/routes_repro.py` + `main.py` wiring: start (202, pins
+  SHA), list, status, cancel, artifact list/download — all
+  app-authenticated. `config.py`: `REPRO_*` bounds (cpu/mem/timeouts,
+  artifact budgets, concurrency 1).
+- `backend/tests/test_repro.py`: 12 tests (freeze accept/reject matrix,
+  classify matrix, full fake-Modal pipeline with secret isolation +
+  bounds assertions, 429 capacity, cancel, reconcile, store, GitHub
+  units). Fixed while writing: two `typing` import typos, a positional
+  ref/token mix-up (now `resolve_ref_sha`), symlink-target keying.
+- Frontend: `ReproPanel.tsx` (start/cancel, 2s polling, verdict badges,
+  events, artifact downloads) wired into `IncidentDetail.tsx`; API
+  client + types; three verdict badge styles. Vocabulary is
+  evaluation-only; nothing claims verified or fixed.
+
+Verification results (2026-11-03):
+
+- `npm run build` (tsc + vite): success with the new panel.
+- `node --check`: `reproduce.mjs`, `server.js`, `driver.cjs` all parse.
+- `pytest backend\tests`: 105 passed (93 existing + 12 new). First run
+  caught three real bugs, all fixed: `routes_repro.py` used
+  subpackage-relative imports at app level (ImportError); runner
+  `_REPO_RE` had a doubled backslash that rejected any repo containing
+  "s"; lock-free run-record reads raced worker writes (Windows
+  PermissionError) — reads now take the store lock.
+- Live Modal reproduction against the published `main`
+  (`9174a4607269282babff247f04fe6418d0bcc8ac`, verified read-only
+  before the run): verdict `REPRODUCED`. Run `ae35c096…` (incident
+  `7a7ffb5e…`, SHA pinned on the incident, contract
+  `67f33335f015…`): 23 events over ~2 minutes — freeze, volume upload,
+  sandbox create, tarball fetch, manifest-hash fidelity match, install,
+  Chromium ready, server ready, both routes driven, 10 artifacts
+  fetched (`result.json`, before/after PNGs, both traces, driver +
+  server + run logs), sandbox terminated. Broken route: button present,
+  center hit-test misses the button (`div#promo-overlay` intercepts),
+  no click, no confirmation. Control: clicked,
+  `Order confirmed: #BL-0001`. Two earlier live attempts failed
+  honestly first (`Image.from_dockerhub` does not exist in Modal
+  1.6.3 → `from_registry`; `exec` timeout must be int; tarball fetch
+  switched from curl — absent in `node:22-slim` — to node).
+  Credentials never entered the sandbox. Nothing claims verified/fixed.
+- Local browser rehearsal: not re-run here (sandbox denies all listen
+  sockets: `EACCES` on 127.0.0.1:4103 and :18080). Prior observed
+  matrix stands: broken `FAIL_BLOCKED`, control `PASS`.
+- `git status`: only intended Step 5 files changed/added; `dist/`
+  ignored; no scratch left behind. Step 5 work is uncommitted; HEAD
+  stays at the published baseline.
+- Environment notes: the venv Python is healthy — the earlier "no
+  interpreter" failure was the tool sandbox blocking the Store shim;
+  approved unsandboxed runs work. A stale BugLens backend (PID 17920)
+  from an earlier session still holds port 8000; it was left running
+  and the live run used port 8001. Ports 8001 free afterwards.
+
+## Step 5 checkpoint (2026-11-03)
+
+- Reviewed the 20 uncommitted Step 5 files (9 modified, 11 new);
+  `.env`, `backend/data/`, `__pycache__/`, `frontend/dist/` verified
+  ignored; secret scan clean (only known fake test constants).
+- Committed as `00873c50cfbadb4a3412aa22e4cfb2378f5dbe0f` (no amend, no
+  push). The completed incident keeps its pinned baseline
+  `9174a4607269282babff247f04fe6418d0bcc8ac`; run `ae35c096…` intact
+  (done/REPRODUCED, 10 artifacts, 23 events, contract `67f33335f015…`).
+- Port 8000's holder was confirmed as this project's stale backend (PID
+  17920, started 01:04, predates Step 5) and replaced with a fresh
+  server; frontend (port 5173) serves the React root and points at the
+  current backend (`/health` ok, repro routes in OpenAPI). No unrelated
+  processes touched. In-browser rendering checks remain pending (no
+  browser automation here).
+
+## Step 6 — investigation and source mapping (2026-11-03, read-only)
+
+Changes (uncommitted):
+
+- `backend/app/providers/meta.py`: `complete()` (Spark/Wonder, optional
+  image parts) and `segment()` (SAM + validated geometry) with model ID,
+  latency, attempts, and observed usage; `config.py` investigation
+  bounds (concurrency 1, token caps, timeouts).
+- `backend/app/investigate/`: `evidence.py` (REPRODUCED + artifacts +
+  provenance gate, E-numbered package over uploaded/baseline/broken/
+  control origins, explicit absence notes), `mapping.py` (pinned-SHA
+  source search, exact/inferred/unknown, citation validation,
+  multi-line tag aware), `inference.py` (prompt builders, defensive
+  Spark/Wonder parsing — malformed output kept raw, never coerced),
+  `runner.py` (sequential stages with cancel/deadline, honest
+  blocked/error states), `store.py`/`jobs.py` (locked per-record
+  persistence, one worker, reconcile).
+- `backend/app/routes_investigate.py` + `main.py`: start/list/get/cancel
+  (app-authenticated; run must belong to the incident).
+- `backend/tests/test_investigate.py`: 11 mocked tests (gate matrix,
+  malformed output, empty/out-of-bounds segmentation, invalid
+  citations, wrong commit, unauthorized, jobs).
+- Frontend: `InvestigationPanel.tsx` (run picker gated on
+  done/REPRODUCED, start/cancel, polling, frame + SAM overlay,
+  observations, mappings, hypotheses, evidence list), API client +
+  types, frame CSS. No PATCHED/FIXED/VERIFIED vocabulary.
+
+Verification results (2026-11-03):
+
+- `pytest backend\tests`: 116 passed. `npm run build`: success.
+- Live investigation on run `ae35c096…` (incident `7a7ffb5e…`): `done`.
+  Spark (11.3s): 4 observations + 4 causal guesses, parsed — notes the
+  button looks enabled with no visible cover. SAM (2.1s): 1 match,
+  box (360,189)-(465,233) on the 1280x800 frame, matching the DOM
+  button rect; overlay deliberately not segmented (opacity 0).
+  Mappings: `div#promo-overlay` exact
+  `fixtures/storefront/public/checkout.html:36` (independently
+  verified at the pinned SHA); `button#pay-button` inferred
+  (multi-line definitions in both checkout files). Wonder (16.7s):
+  1 hypothesis, parsed — transparent full-viewport interceptor,
+  mechanism citing E7/E8/E9/E11, 11 supporting refs, validated
+  location `checkout.html:36`, zero unvalidated citations, repair
+  direction without a diff.
+- Two honest failures preceded the green run: Spark cap 800 returned
+  `incomplete` (hidden reasoning tokens consume `max_output_tokens`;
+  caps raised to 1600/2400), and single-line-only element search cited
+  a comment for the button (fixed to multi-line tag spans + test).
+- No supplementary capture was needed: geometry, styles, hit-testing,
+  console output, annotations, and frames were all present; only
+  per-action timestamps are absent (noted explicitly; phase timing in
+  run events + traces).
+- No patches generated or applied. Step 6 work is uncommitted.
+
+## Step 7 — scoped candidate generation + review (2026-11-03)
+
+Checkpoint: Step 6 committed as `fb8a482912afad935a1cd525c09a9d2032aca4fb`
+(no amend, no push). Incident baseline preserved at
+`9174a4607269282babff247f04fe6418d0bcc8ac` throughout.
+
+Changes (uncommitted):
+
+- `backend/app/patches/`: `context.py` (chain verification + pinned
+  source collection), `generate.py` (Wonder prompt with contract,
+  hypothesis, evidence, excerpts, allowed/protected lists; defensive
+  JSON parse), `validate.py` (structural unified-diff validation:
+  canonical paths, manifest scope, protected + harness backstop,
+  symlink/baseline presence, size bounds, strict in-memory apply),
+  `runner.py`, `store.py`/`jobs.py` (locked records, one worker).
+- `backend/app/routes_patches.py` + `main.py`: start/list/get/
+  approve/reject/cancel (app-authenticated; 3-candidate budget;
+  approval re-verifies the diff hash binding).
+- `backend/tests/test_patches.py`: 8 mocked tests (parser matrix,
+  scope/protected/traversal/symlink/baseline/bounds, full pipeline,
+  prereq drift, budget, approve/reject/stale/tamper, persistence).
+- Frontend: `CandidatePanel.tsx` (investigation + hypothesis picker,
+  generation polling, rendered diff, validation list, Approve/Reject),
+  API client + types, diff CSS. No FIXED/PATCHED/VERIFIED vocabulary.
+- `config.py`: patch bounds; Wonder cap 4096 (measured — see below).
+
+Verification results (2026-11-03):
+
+- `pytest backend\tests`: 124 passed. `npm run build`: success.
+- Live candidate on investigation `bbe7be7e…` (rank 1): `ecd72616…`
+  `PROPOSED` at baseline `9174a46…` — 1 file
+  (`fixtures/storefront/public/checkout.html`), 2 changed lines:
+  `style="pointer-events: none;"` added to the overlay div. Evidence
+  E7/E8/E9/E11/E20/E22; expected effect names the button click and
+  `Order confirmed`; 1 regression risk; usage 2768 output tokens.
+  All 5 validation checks pass. Approval pending (not fabricated).
+- First live attempt blocked honestly (cap 2400 → `incomplete`, 0
+  chars); the measured fix (4096; observed 2747 output tokens incl.
+  2349 reasoning) succeeded. A later harness-side transport error
+  ("error sending request", reqwest phrasing, absent from BugLens
+  code) was diagnosed as the agent tool's own connection failure,
+  not a Wonder adapter defect; recovery verified the backend
+  healthy, one terminal blocked record, no active job, then made
+  exactly one new bounded attempt.
+- No verification run and no PR in this milestone. Step 7 work is
+  uncommitted.
+
+## Step 8 — seven-gate verification (2026-11-03, no PR)
+
+Checkpoint: Step 7 committed as `d4dcf79f5d0660ae91f1e2d3d423775417b35c55`
+(no amend, no push). Incident baseline preserved at
+`9174a4607269282babff247f04fe6418d0bcc8ac` throughout.
+
+Approval check: candidate `ecd72616…` is `proposed` with `approval:
+null` and an intact diff hash (`df74ab97…`, recomputed equal). No
+approval exists and none was fabricated — live Modal execution stays
+blocked; only the refusal path ran live.
+
+Changes (uncommitted):
+
+- `backend/app/verify/`: `policy.py` (frozen + hashed measurement
+  policy), `png.py` (dependency-free 8-bit RGB/RGBA decoder, filter
+  types 0-4, tolerance comparison with frozen exclusions),
+  `gates.py` (seven evaluators over untrusted reports; missing
+  evidence blocks), `runner.py` (approval recheck, patched-byte
+  computation from pinned blobs, two node sandbox checkouts +
+  two python suite sandboxes, artifact persistence, trusted
+  verdict), `store.py`/`jobs.py` (locked records, one worker,
+  reconcile-never-verified).
+- `backend/app/routes_verify.py` + `main.py`: start (approved-only,
+  409 otherwise), list/get/cancel, authenticated artifact downloads.
+- `backend/tests/test_verify.py`: 8 tests (PNG roundtrip/rejections,
+  policy determinism, all-pass gates, 8 fail modes, 5 blocked modes,
+  mocked 4-sandbox run to VERIFIED, refusal, endpoints, reconcile).
+- Frontend: `VerifyPanel.tsx` (verify action gated on approval,
+  progress polling, per-gate results, before/after shot comparison,
+  evidence downloads) wired into the candidate view; API client +
+  types; shot-grid CSS. No PR creation.
+
+Verification results (2026-11-03):
+
+- `pytest backend\tests`: 132 passed. `npm run build`: success.
+- Mocked end-to-end verification reaches `VERIFIED` (7/7 PASS, 4
+  sandboxes created + terminated, policy + 20 artifacts persisted).
+- Live refusal demo on the real backend: candidate still
+  proposed/approval null → POST verify returns 409, zero
+  verification records created, zero Modal spend.
+- Gate 4 design note: the pinned target tree's independent suite is
+  the repo's backend pytest suite at the SHA (the fixture ships no
+  separate unit suite; the frozen harness stays Gate 1's). Both
+  checkouts execute it identically; only NEW candidate failures fail.
+- Environment note: port 8000 was held by a stale pre-Step-8 project
+  backend (left untouched); live checks ran on 8001, freed after.
+- Step 8 work is uncommitted. Stopped before PR creation.
+
+## Step 8 live verification (2026-11-03)
+
+Developer approved candidate `ecd72616…` for isolated verification
+only (via the authenticated approve endpoint from the chat session —
+not a UI click; no PR/push/merge authorized). Pre-approval check
+passed: diff exactly the reported one-line `pointer-events: none`
+overlay change, hash `df74ab97…` recomputed equal, validation ok,
+baseline `9174a46…`.
+
+First live run `092dfda5…` BLOCKED honestly: candidate overlay `cp`
+used the volume path `/overlay/…` instead of the sandbox mount
+`/buglens/overlay/…`, so the copy failed. Diagnosed with a Modal
+probe (nested volume uploads work; the mount prefix was wrong),
+fixed `verify/runner.py` (mount path + split copy/hash errors),
+added a regression test asserting cp sources resolve under the
+mount. Failed run preserved untouched.
+
+Second live run `1acefb6a…` (same approval, candidate/policy
+unchanged): `done/VERIFIED` in ~9 minutes across 4 fresh sandboxes
+(all terminated; 20 artifacts persisted; policy `c6091fe4…`).
+
+- Gate 1 reproduction PASS: 9/9 — baseline fails blocked (present,
+  intercepted, unclicked, unconfirmed), candidate clicked + confirmed
+  with matching text, both controls ok.
+- Gate 2 target PASS: button present/visible, no missing elements,
+  candidate before/after differ 0.54% (confirmation appeared),
+  baseline before/after identical.
+- Gate 3 layout PASS: button rect (360,189,106x44) inside 1280x800,
+  center hits, control intact.
+- Gate 4 repo tests PASS: 93 collected both checkouts; 2 failures
+  each, identical pre-existing set (a Windows-path test and an
+  app-auth status test under Linux), 0 new failures.
+- Gate 5 runtime errors PASS: no errors either side.
+- Gate 6 protected UI PASS: 0/1024000 before-click pixels differ.
+- Gate 7 scope PASS: tested bytes equal the approved diff
+  (`checkout.html` → `1b94313c…`).
+
+Tested identity: diff `df74ab97…` at baseline `9174a46…`, contract
+`67f33335f015…`. Backend suite re-run after the fix: 132 passed.
+No patch regenerated, no PR published; working tree untouched
+(candidate bytes only entered Modal sandboxes).
+
+## Step 9 — verified GitHub PR publication (2026-11-03, no write yet)
+
+Checkpoint: Step 8 committed as `75d291c` (no amend, no push).
+Incident baseline preserved at
+`9174a4607269282babff247f04fe6418d0bcc8ac` throughout; the repair
+branch carries only the tested candidate change, never dev commits.
+
+Changes (uncommitted):
+
+- `backend/app/publish/`: `preflight.py` (11 local + 3 remote
+  checks: completed live run with 7/7 PASS over sha256-verified
+  artifact bytes, 4 sandbox-terminated markers, and 7 trusted gate
+  events; approval/binding/provenance/repo/supersede checks;
+  recomputed change bytes via the trusted Step 8 applier; remote
+  base still pinned; branch state), `service.py` (preview assembly,
+  one-worker idempotent publish, orphaned-intent recovery with
+  branch identity proof, equivalent-commit adoption, never
+  force-push), `github.py` (git-database + PR client, sanitized),
+  `prbody.py` (evidence summary from records only), `store.py` /
+  `models.py` (locked publication records).
+- `backend/app/routes_publish.py` + `main.py` + `config.py`:
+  preview (read-only), publish (explicit, 201/409/429), list/get.
+- `backend/tests/test_publish.py`: 26 mocked tests (preview exactness,
+  refusal matrix, exact-bytes commit assertion, idempotency, reuse,
+  orphan recovery + unproven-branch refusal, equivalent adoption,
+  token requirement, single-flight concurrency, endpoint guards).
+- Frontend: `PublishPanel.tsx` (run picker, title input, preview +
+  preflight table, exact diff/body, Publish gated on full pass with
+  confirmation, real-PR display) wired into the candidate view; API
+  client + types; VerifyPanel heading updated.
+
+Verification results (2026-11-03):
+
+- `npm run build`: success (tsc + vite, 42 modules).
+- `pytest backend\tests`: 158 passed (132 existing + 26 new publish
+  tests) in ~27s. The earlier "no Python" block was a sandbox
+  artifact: the sandbox user cannot read `WindowsApps` (Store
+  interpreter home), use schannel TLS, or open loopback from
+  non-inbox binaries. One approved unsandboxed run of the project's
+  own `.venv` (Python 3.13.14, unchanged) fixed it; no environment
+  changes were needed.
+- Publisher reuses the proven Step 8 applier
+  (`parse_diff`/`apply_in_memory`) instead of a new one (a first
+  duplicate had a terminal-newline bug, caught by a node cross-check
+  against the live tested hash `1b94313c…` and deleted).
+- Live read-only preview on candidate `ecd72616…` / verification
+  `1acefb6a…` (title "Fix checkout overlay intercepting Pay now
+  clicks"): `preflight_ok: true`, all 15 checks PASS — done/VERIFIED,
+  7/7 gates, 8 artifacts byte-verified + 4 sandboxes terminated,
+  approval bound, diff hash recomputed equal, baseline/contract bound,
+  pin `9174a46…`, repo approved, latest approval, 1 file reproduces
+  the tested bytes from live pinned blobs, remote `main` still
+  `9174a46…`, branch `buglens/fix-ecd72616` absent. PR body renders
+  the real hypothesis cause, change explanation, expected effect,
+  regression risks, and gate table.
+- No GitHub write performed at preview time; no PR created. Backend
+  stopped after the demo. Publish awaited explicit authorization.
+
+## Step 9 publication (2026-11-03, authorized single PR)
+
+Developer authorized exactly one PR for the previewed repair (no
+merge, no main writes, no regen, no unrelated files).
+
+Gate 4 evidence review (before publishing): both reports complete
+(93 collected, full run to summary, timed ~6.8s each) with the SAME
+2 failures and 0 new — `2 failed, 91 passed` each side, never "93
+passing". The failures are pre-existing environment interactions,
+not missing dependencies or incomplete execution: (1)
+`test_safe_artifact_path_rejects_escape[..\\evil.png]` — backslash
+is a separator only on Windows, so the escape the test demands does
+not exist on Linux; (2) `test_status_requires_app_auth` — expects
+401 but the suite assumes an ambient `BUGLENS_API_TOKEN`, which
+sandboxes correctly lack (auth returns 503 misconfigured instead).
+Both fail identically on the unpatched baseline, so Gate 4's "no
+new failures" stands. The publisher now names failing tests in the
+PR body (`prbody.test_summary` + test; suite re-run: 158 passed).
+
+Live preflight refreshed immediately before publish: all identity
+fields matched the authorized preview (repo, `main@9174a46…`,
+`buglens/fix-ecd72616` absent, 1 file, diff `df74ab97…`, approval,
+tested bytes from live pinned blobs, 7/7 gates) — `preflight_ok`.
+
+Publication `2f2feca6…` via the normal authenticated endpoint:
+branch created, repair commit
+`b59b1d7d42fb608c62497b3addeca4a50dc494d0`, PR #1 opened —
+https://github.com/WANAONTOP/Buglens/pull/1 ("Fix checkout overlay
+intercepting Pay now clicks"). Read-back from GitHub verified: repo,
+base `main@9174a46…`, head branch + commit, exactly 1 file changed
+(+1/−1), blob sha256 `1b94313c…` equals the tested bytes containing
+`pointer-events: none;`, single parent = baseline. PR state open,
+merged false (mergeable flag is GitHub-computed; no merge
+performed). Second publish call returned the same record (no
+duplicate). PR number/URL persisted in the record. Backend stopped.
+
+## Step 10 — browser acceptance + release readiness (2026-11-03)
+
+Local site: backend `http://127.0.0.1:8000` (uvicorn, own `.venv`)
++ existing frontend `http://localhost:5173` (project vite PID 12304,
+reused untouched). Sign-in: paste the server's `BUGLENS_API_TOKEN`
+into the API token card (tab session storage; values never printed).
+
+Browser evidence (Brave headless + CDP, real DOM + screenshots; no
+`agent-browser` CLI on the machine, so a small CDP driver stood in):
+
+- Full pass: 30/31 scripted checks green — landing/backend status,
+  form sign-in, incident list, new-report controls, completed
+  incident `7a7ffb5e…` (pinned SHA, REPRODUCED run + artifacts,
+  Spark/SAM/hypothesis/mappings on `bbe7be7e…`, candidate diff +
+  validation + approval, 7/7 gates, PR #1 link exact
+  `https://github.com/WANAONTOP/Buglens/pull/1`), screenshot attach
+  → Save report → uploaded evidence on a new probe incident.
+- Focused probes: genuine 30KB vp8 canvas webm attached + uploaded
+  (`clip.webm`, probe incident now holds 2 evidence items); denied
+  recording path renders exactly "Screen sharing was cancelled or
+  permission was denied." (rejection stubbed — headless has no
+  picker, and the raw call pends there with no UI change).
+- Pending-manual (needs a headed browser + human): real screen
+  recording (click Record screen → OS picker → Stop; timer/controls),
+  real picker-cancel denial, video scrubbing/frame capture,
+  clicked-point marking. Screenshots kept under the session temp
+  `shots/` dir (13 captures).
+- Newly executed vs prior: only 2 probe draft incidents are new
+  (`438d0d7d…` holds the screenshot + `clip.webm` uploads; a second
+  screenshot-probe draft came from the rerun); all
+  repro/investigation/candidate/verify/
+  publish results shown are the previously completed runs. Zero new
+  model/sandbox/PR spend; PR #1 untouched and unmerged.
+
+Fixes (frontend only; `npm run build` green, tsc + vite):
+
+- `VerifyPanel.tsx`: Baseline row read a nonexistent
+  `verification.baseline_sha` (always blank) — now shows
+  `candidate.baseline_sha`; bogus field removed from `types.ts`.
+  Confirmed live in the browser (SHA visible).
+- Stale copy corrected: CandidatePanel heading, IncidentDetail
+  "later milestone" note, App subtitle. No test harness exists for
+  the frontend, so browser assertions + build are the verification;
+  backend suite untouched by this step (still 158 green from Step 9).
+
+Known display truth, not a bug: incident `7a7ffb5e…` shows intake
+status Blocked (no uploaded developer evidence, no permitted paths)
+while its downstream panels are complete — intake status describes
+uploads only. Left unchanged deliberately.
+
+Deployment readiness (hosted frontend + Modal backend — NOT ready,
+nothing deployed): (1) no Modal entry point — backend runs only via
+local uvicorn; `modal.py` is a sandbox client, no `asgi_app`/`serve`
+image; (2) storage is local-disk JSON (`backend/data`), ephemeral
+on Modal — needs a Volume + data-dir wiring; (3) jobs are in-process
+thread pools with in-memory `_live` maps — restarts orphan runs
+(reconcile marks them blocked), no queue, no multi-replica safety,
+30-min verifications exceed default Modal function timeouts;
+(4) single shared Bearer [REDACTED] rotation/multi-user story;
+(5) CORS pinned to `http://localhost:5173` constant — needs
+env-driven origins; (6) secrets via local `.env` — needs
+`modal.Secret` wiring (sandbox isolation already correct: sandboxes
+receive no credentials); (7) frontend `BACKEND_URL` hardcoded to
+`127.0.0.1:8000` — needs build/runtime config for the hosted API.
+
+Source publication state: app source is NOT fully published —
+local `main` is 4 commits ahead of `origin/main` (Steps 5–8) plus
+uncommitted Step 9 + Step 10 work. Note: pushing app commits to
+`main` moves the base that PR #1 was verified against — sequence
+deliberately. No push performed (not authorized).
+
+Next concrete step (Step 11): add the Modal backend entry point
+(`modal.App` + ASGI + pinned image + Secrets) with storage on a
+Modal Volume, keeping local uvicorn as the dev path.
+
+## Step 11 — Modal deployment preparation (implemented, NOT deployed)
+
+Implemented against installed Modal SDK 1.6.3 (CLI syntax taken
+from its own `--help`; `modal.Mount` absent there, so the image uses
+`add_local_dir` with `ignore=["data", "tests", ...]`, and `retries`
+lives only on workers since web functions reject it). No
+`modal deploy`, secret/volume creation, push, merge, or paid rerun
+in this step; local uvicorn dev, all records, PR #1 (open/unmerged),
+and the pinned baseline `9174a460…` / verification `1acefb6a…`
+evidence are untouched.
+
+Files: new `backend/modal_app.py` (App `buglens-ai`: one
+`max_containers=1` ASGI function, 4 workers with `retries=0`,
+Volume `buglens-data` at `/data`, Secret `buglens-secrets`),
+`backend/app/deploy.py` (flags, lazy volume, reload/commit sync,
+remote spawn/cancel via `Function.from_name().spawn` /
+`FunctionCall.from_id().cancel`, raw-JSON capacity counts, registry
+OCC versions, 3600s stale reconciliation),
+`backend/app/workers.py` (guarded remote entry points: claim only
+`queued`, mark crashes error/BLOCKED, never auto-retry),
+`backend/tests/test_modal_deploy.py` (22 tests),
+`frontend/.env.example` (`VITE_BUGLENS_API_URL`); edited
+`backend/app/main.py` (env CORS, volume-sync middleware running
+blocking calls in a worker thread, 409 handler), `config.py`
+(`get_cors_origins`: `BUGLENS_CORS_ORIGINS`, then `FRONTEND_ORIGIN`,
+then localhost default), `store.py` + 5 area stores (commit hooks;
+incidents OCC guard), 4 models (`worker_call_id`), 4 jobs modules
+(remote dispatch/cancel/reconcile; `BUGLENS_JOBS=modal` without
+`BUGLENS_MODAL=1` raises), 4 routes (spawn failure → 502),
+`routes_incidents.py` (OCC versions), `frontend/src/api.ts` +
+`vite-env.d.ts`, `requirements.txt` (`modal>=1.6,<2`), `.env.example`,
+`backend/tests/test_repro.py` (exec secret scan).
+
+Behavior notes: remote cancel matches local terminal semantics
+(repro/investigation cancelled, candidate blocked, verification
+blocked/BLOCKED); repro capacity counts `run.json` via the
+`filename` param; the record being started is excluded from its own
+capacity count (it sits in `queued`, an active state — found by the
+deploy tests, fixed in `count_active(exclude=…)`); same-instant
+registry races stay last-writer-wins and are documented as such.
+
+Verification (all local/mocked; live Modal checks NOT run):
+`pytest backend/tests/test_modal_deploy.py` 22/22 green (config,
+flags, app structure, sync, OCC incl. 409 mapping, dispatch, cancel,
+reconcile, workers, isolation); full `pytest backend/tests` 180
+green; `npm run build` green; `modal_app` imports with App
+`buglens-ai`, Image built, env keys
+`BUGLENS_DATA_DIR/BUGLENS_JOBS/BUGLENS_MODAL`. Secret names (never
+values), exact PowerShell deploy commands, and the bounded live
+smoke procedure (upload → job → poll → artifacts → restart
+persistence) are in README "Modal deployment". Remaining blockers:
+live restart persistence and remote execution unverified; 2400s
+verify-worker timeout vs 30-min runs needs a live run; API must stay
+single-container.
+
+## Step 12 — Correctness review + live deploy and smoke (LIVE, passed)
+
+Storage review found and fixed real races (single-dev deployment):
+duplicate spawn had no serialization or same-record check; the
+spawn-update could wipe a worker's early claim; worker progress
+writes could resurrect API-cancelled records (wide kill-latency
+window); terminal-vs-terminal overwrites; reconcile could mark an
+alive-but-quiet worker lost. Verified the incident registry is
+API-write-only (runners only read) and artifact downloads open
+post-reload atomic files. Fix by ownership + lifecycle ordering, not
+cross-container locks: per-module spawn lock (exactly-once spawn;
+same-record resubmission is idempotent); worker writes nothing until
+the API's `worker_call_id` commit is visible (else `uncommitted`,
+reconcile later marks lost); guarded `queued`-only claims;
+`expect_states` preconditions on spawn/cancel/reconcile/crash marks;
+every deploy-mode update reloads first and refuses terminal-record
+writes; cancel kills with container termination, confirms death,
+then marks; reconcile marks lost only on confirmed-finished (or
+never-recorded) calls, failing safe on `unknown`; terminal
+lifecycle events folded into the mark write (keeps the preflight
+"cancellation requested" marker). Residual: a worker surviving
+container termination could write after the mark (documented).
+Touched: `deploy.py` (`call_status`, `wait_for_call_end`,
+terminating `cancel_call`), 4 job stores (guards), 4 jobs modules,
+4 cancel routes (event folded into jobs), `workers.py` (handshake +
+claims), `main.py` (DeployError → 503). Tests: 12 new focused race
+tests (34 deploy tests total), full suite 192 green, build green.
+
+Deploy (authorized): Volume `buglens-data` + Secret `buglens-secrets`
+(both new; names only ever shown) holding exactly `BUGLENS_API_TOKEN`,
+`GITHUB_TOKEN`, `GITHUB_REPO`, `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`,
+`BUGLENS_CORS_ORIGINS=https://buglens-smoke.invalid` (placeholder;
+`META_API_KEY`/`BASETEN_API_KEY` present locally, excluded — no model
+calls in scope). Image ignore hardened (`.env*`, `*.log`, `*.pem`,
+`*.key`); backend tree verified free of secret-shaped files. First
+deploy crashed (`ModuleNotFoundError: app` — entry uploads to
+`/root`, code bakes at `/root/backend`); fixed path resolution in
+`modal_app.py`, redeployed green. Live URL:
+`https://gbishwakarma18--buglens-ai-api.us-east.modal.run` (public
+endpoint, `/api/*` Bearer-authenticated).
+
+Live smoke (one repro job, no model calls): health ok; 401s correct;
+preflight echoes the allowed origin only; incident `b9279a59`
+created; screenshot uploaded with matching sha; start returned 202
+in 7.0s; duplicate POST → 429 with no second run/worker; run
+`2224e93e` went queued → running → done `REPRODUCED` at pinned
+`9174a460…` with remote `worker_call_id` + claim event (23 events,
+10 artifacts, download hash verified). Redeployed (new container):
+incident, evidence, worker results, and byte-identical artifacts all
+served by the fresh reader — persistence VERIFIED. Checkpoint
+`a7d4db9` + live fix `720f3a5` on local-only branch
+`step12/deploy-prep` (staged content secret-scanned; not pushed).
+PR #1 open/unmerged; local records and main untouched. Remaining:
+host the frontend (`VITE_BUGLENS_API_URL` = live URL, then real
+CORS origin in the secret + redeploy); remote model workers,
+publication-from-deploy, and the 2400s verify timeout unverified.
+
+## Step 13 — Hosted frontend + browser checks (LIVE, passed)
+
+No configured host existed, so Vercel it was. CLI login never
+landed in this shell (two confirmations, no credentials file;
+`--temporary` also demanded login), so deployment used a user-made
+token file (`D:\buglens-ai\.vercel-token`, Git-ignored): a script
+passed it to the child CLI process only, never printed it, and
+deleted the file after success. Prebuilt static deploy
+(`frontend/dist` via Build Output API v3; hash deep links need no
+rewrites): production URL
+`https://frontend-jade-rho-52.vercel.app`
+(first attempt failed on a PowerShell-mangled `config.json`, fixed
+and redeployed). Build sets `VITE_BUGLENS_API_URL` to the Modal
+backend; new fail-closed guard in `api.ts` throws at load when a
+production bundle lacks it (local dev keeps the uvicorn fallback).
+Bundle verified: backend URL baked, guard present, no `sk-`/`ghp_`
+shapes, only `.env.example` on disk, exactly one `VITE_*` var at
+build time. `BUGLENS_CORS_ORIGINS` swapped to the exact production
+origin (other 5 secret entries rebuilt from the same local sources),
+backend redeployed: allowed preflight 200 + echo, smoke/evil
+origins 400 without echo, no wildcard.
+
+Browser suite (headless Edge, scripted, token via `.env` inside the
+script only): 15/15 — load, Backend connected, refresh, sign-in
+(Saved incidents (1)), smoke incident + done/REPRODUCED run,
+artifacts after Open, deep-link open + refresh survival, screenshot
+upload with byte-identical retrieval (sha match), real
+browser-encoded vp9 WebM upload with preview + Capture frame, logout
+(token cleared, access gated). Headed Record attempt: click produced
+no in-page change and Escape produced no denial text (native picker
+not drivable) — full Record/Stop/playback/capture/marking stays
+pending-manual: open the site, Save token, open an incident, Record
+screen → OS picker → Share → Stop → preview/capture/mark → Upload.
+Cosmetic: `/favicon.ico` 404s. Providers endpoint: meta + baseten
+`not_configured` with actionable value-free messages, github/modal
+`configured_untested`; zero model/verification/publication calls.
+Remote holds only Step 12-13 smoke data (no local records copied;
+local completed incident NOT claimed remotely). Docs + `api.ts`
+guard + `.gitignore` (`.vercel/`, `.vercel-token`) checkpointed on
+`step12/deploy-prep` (not pushed); PR #1 unmerged. Remaining for a
+hosted upload-to-verification run: add `META_API_KEY` to
+`buglens-secrets` (+ redeploy), run provider smokes, then drive
+investigate → candidate → verify remotely.
+
+## Step 14 — Meta config + hosted screenshot-to-candidate (LIVE, proposed)
+
+Secret: rebuilt `buglens-secrets` from the same local sources with
+`META_API_KEY` added (7 keys; production CORS + all 6 others
+preserved; values never printed); redeployed. Providers endpoint:
+meta/github/modal `configured_untested`, baseten `not_configured`.
+Zero smoke calls — connectivity proven by the workflow itself.
+
+Demo incident `54ce59632c254778bbb8fb3b2f8a8c79` (link:
+`https://frontend-jade-rho-52.vercel.app/#incident=54ce59632c254778bbb8fb3b2f8a8c79`),
+created through the website with the required expected ("Pay now
+completes checkout and shows confirmation") / observed ("clicking
+Pay now is blocked by an overlay") text, repo/ref/viewport/paths,
+and an evaluation-fixture label. Screenshot `demo14_checkout.png`
+is genuine: served the local fixture (verified byte-identical to
+pinned `9174a460…` for served files), clicked Pay now (Playwright's
+own click timed out on the overlay), captured button-without-
+confirmation at 1280x800. Uploaded via the site; recorded as
+evidence E1 (`ba438ca7…`, sha `1eea85be…`).
+
+Hosted UI-driven workflow, all remote workers: run
+`8ebd9aa3897646d1825c62768602adfa` → done/REPRODUCED at
+`9174a460…` (10 artifacts); investigation
+`b1affe7a01264652b25180a674cbbb6b` → done, 25 evidence items, 1
+Wonder hypothesis (transparent `div#promo-overlay` intercepts Pay
+now clicks; inferred location `checkout.html:36`, validated at the
+pinned SHA; refs E6-E25); candidate
+`b7eaf07ae7044555a2b7fecc16dc1b5e` → proposed, validation 5/5 ok,
+single-file removal of the overlay div (diff hash
+`2dedeb654f7c0153…`), approval null. URL shown after refresh with
+all panels (screenshot `shot14_candidate.png`).
+
+Screenshot contribution, precisely: E1 is in the package with
+verified identity and depicts the same broken state as repro frame
+E4 (button visible, no confirmation), corroborating the report —
+but Spark analyzed E4/E16 and no hypothesis cites E1; the causal
+diagnosis rests on DOM/hit-test evidence. SAM segmented the
+visible Pay button only (1 match); its own note states the overlay
+is established by DOM/hit-test, not vision. Usage as reported, all
+first-attempt completions: Spark 2667+1426 (13.2s), SAM 1 image
+(0.9s, 0 tokens), Wonder-inv 1343+2311 (15.4s), Wonder-cand
+2435+2548 (18.2s); 12,730 tokens total, no cost data (none
+invented). Review note: the candidate REMOVES the overlay div where
+PR #1's approach added `pointer-events: none` — removal is minimal
+for an empty invisible element but drops the promo hook; the model
+itself flags reintroducing future promos without viewport-covering
+pointer events. PR #1 open/unmerged, same head `b59b1d7d`. No
+verification, no approval, no PR action. Screen recording remains
+pending-manual. Docs updated; no commit requested this step.
+
+## Step 15 — Approved verification of the removal patch (LIVE, VERIFIED)
+
+Approval check: retrieved candidate
+`b7eaf07ae7044555a2b7fecc16dc1b5e` (was proposed/approval-null),
+recomputed sha256 over the stored diff bytes =
+`2dedeb65…` = stored = authorized; baseline `9174a460…`, single
+file `checkout.html`, exact div-removal line — all match, so
+proceeded. Approval via `POST /api/candidates/{id}/approve` with
+the exact hash + honest note (agent API call under the written
+Step 15 authorization, not a UI click) → 200, state approved,
+binding persisted.
+
+One verification via the website's "Verify approved candidate"
+(inside the opened candidate; two script selector misses first —
+panel location + row scoping — no app defect): run
+`883074144b124857934a8fd92d121ee9`, remote worker, done in
+~3.5 min (record 18:11:16→18:14:45Z), outcome VERIFIED, 7/7 PASS,
+contract `67f33335f015`, policy `c6091fe4…`. Gates: (1) baseline
+intercepted/failed/no-confirm, candidate clicked+confirmed+text,
+both controls ok; (2) candidate before/after pixel frac 0.005
+(interaction-caused confirmation); (3) geometry at 1280x800, center
+hits button, control intact; (4) same pytest command both sides,
+93 collected, 91 pass, 2 identical pre-existing failures, 0 new —
+`test_safe_artifact_path_rejects_escape[..\evil.png]` (Windows-path
+case on Linux) and `test_status_requires_app_auth`, both
+completed runs, no infra failure; (5) no errors either side;
+(6) 0/1,024,000 differing pre-click pixels (correct: invisible
+repair); (7) tested hash `8925a621…` + diff `2dedeb65…` equal the
+approval. Cleanup: 4/4 sandboxes created+terminated (bl/cd node,
+gate4-bl/gate4-cd python). Artifacts: 20 recorded; downloads of
+`gate4-bl-tests.txt`, `gate4-cd-tests.txt`, `cd-broken-after.png`
+all MATCH hashes; baseline tail independently reads "2 failed, 91
+passed". Website after refresh shows the incident, approved
+candidate, and run `883074144b12 · done · VERIFIED · 7/7 gates`
+(screenshots `shot15_verify.png`, `shot15_runrow.png`). PR #1 open,
+unmerged, same head `b59b1d7d`; no PR action, merge, or push.
+Limitations: VERIFIED is scoped to the tested policy/viewport/suite
+(removal vs pointer-events styling unjudged); hosted
+upload→verify loop still manual per step; screen recording pending.
+Docs updated; no commit requested.
+
+## Step 16 — PR #2 published for the removal patch (LIVE)
+
+Authorization text stated the diff hash twice: first block
+61 chars (typo, missing "11"), second block the valid 64-char
+`2dedeb65…` matching Step 15's recomputation — proceeded on the
+valid hash only. Live preview 15/15 (`preflight_ok`), base
+main@`9174a460`, tested bytes reproduce, branch absent. The fixed
+template could not express two required disclosures, so added a
+minimal opt-in `notes` → "Reviewer notes" section (prbody +
+service + routes; body text only, never code) with a rendering
+test; title set to "[Alt to #1] Remove promo overlay blocking Pay
+now (evaluation fixture)". Publish tests 27 green; redeployed.
+
+First publish created the correct branch/commit
+(`buglens/fix-b7eaf07a` @ `e4d5c5c2`, exact bytes) but recorded PR
+#1: root cause — GitHub ignores the bare-branch `head` search
+filter (proven: query returned PR #1, head `buglens/fix-ecd72616`)
+and `find_open_pr` trusted it blindly (latent since PR #1's
+publish, when zero PRs were open). PR #1 itself untouched. Fix:
+client-side head-ref verification in `find_open_pr` (documented
+`owner:branch` query form) + a reuse guard that confirms a
+published record's PR head before returning it, retiring
+mismatches as failed; two regression tests (foreign-PR ignored,
+stale record superseded); publish suite 29 green; redeployed.
+
+Second publish retired `bf62986e…` ("recorded PR #1 belongs to a
+different branch") and opened real PR #2:
+`https://github.com/WANAONTOP/Buglens/pull/2` (publication
+`535b504ff6cc4905a214e37cfcf13809`). Read-back: open, unmerged,
+base main@`9174a460`, head `buglens/fix-b7eaf07a`@`e4d5c5c2`,
+exactly `checkout.html` (0+/1−), raw bytes sha256 =
+`8925a621…` = tested hash, overlay div absent; body contains the
+title label, notes, diff/tested hashes, gates table, provenance,
+viewport, limitations, fixture notice, Modal-not-CI statement, and
+the suite line "93 collected, 2 failed (0 new vs baseline);
+failing tests are identical on baseline and candidate
+(pre-existing…)" with both names ("91 passed" = 93−2 via those
+recorded counts). Repeat POST (different notes) returned the same
+publication; open PRs exactly #1+#2; website shows the PR #2 link
+after refresh. PR #1 open/unmerged, same head `b59b1d7d`; no
+merge/push. Deployed code (notes + PR-lookup fix + tests) is
+UNCOMMITTED on the branch — needs a checkpoint step. Screen
+recording still pending-manual. Docs updated; no commit requested.
+
+## Step 17 — Submission checkpoint + public source (pending push)
+
+Review: working tree holds exactly the deployed notes + PR-lookup
+fix, its 3 regression tests, and doc updates — no credentials
+(full-tree + diff scans clean; only test dummies and variable
+names), no data/builds/deps/token files. Validation: backend suite
+195 green (separate from the historical fixture result of 91
+passed / 2 pre-existing / 0 new); production frontend build green
+with the Modal API URL (same bundle hash as the deployed site).
+Deployed backend == working-tree `app/` (last deploy postdates all
+app edits; only docs/tests changed after, tests excluded from the
+image) — no redeploy needed. Added SUBMISSION.md (links, demo
+walkthrough, architecture, scope, limitations) plus README/PLAN
+pointers. Committed and pushed `step12/deploy-prep` (see report
+for SHAs); main untouched; PR #1/#2 open and unmerged. No paid
+model calls, verifications, or PRs in this step.
+
 ## Later steps
 
 Append one section per milestone with files touched and verification results.
+
+## UI redeploy — upload states + production release (LIVE)
+
+Commit `e921b9d` on `step12/deploy-prep` (6 files: `api.ts`,
+`EvidenceCapture.tsx`, `App.tsx`, `NewReportWizard.tsx`, `App.css`,
+`frontend/.gitignore`; diff secret-scan clean). Fixes from the
+recording/upload investigation: per-item Preparing/Ready/Uploading
+status, ✓-notice only after the server's 201, XHR 120s timeout with
+Cancel upload, backend-aware network errors, 401 re-auth on upload,
+"Finalizing recording…" indicator, wizard double-save guard, incident
+remount key.
+
+Deploy: Vercel CLI via `npx` (not installed; no stored login — user
+supplied a one-time token file, used via env, deleted after).
+Project has no env vars (unchanged); `vercel build` fails locally
+(EPERM symlink into its builder cache), so deployed with
+`vercel deploy --prod --build-env VITE_BUGLENS_API_URL=<modal>`:
+fresh remote build, deployment `frontend-6s29z15t6`, aliased to the
+existing `https://frontend-jade-rho-52.vercel.app`. Stale local
+`.vercel/output` removed, never deployed. Live bundle bytes verified:
+Modal URL active (only localhost string is the dead dev fallback),
+0 secret values, 0 credential names. Backend untouched (no CORS or
+secret changes).
+
+Hosted verification (headless Edge, sanitized logs): 18/18 functional
+checks — landing + auto-open Connect dialog, wrong-token 401 message,
+real sign-in, Step 14 demo (7/7 gate cards, `checkout.html` diff,
+PR #2 link), refresh persistence, Settings Modal URL, one "Hosted UI
+test" incident `c33a5948…` with screenshot upload + refresh
+persistence, desktop/mobile zero page overflow (mobile tab strip is
+swipeable, verified reachable). Only 4xx/log noise: the intentional
+wrong-token 401 and the known benign favicon 404. Screenshots
+inspected: no clipping. One transient Modal load timeout passed on
+retry. No paid jobs, approvals, PRs, or merges. The branch (with a
+doc-correction follow-up fixing the submission incident link, demo
+run reference, recording status, sign-in instructions, and
+attribution) is pushed to origin; main and PR #1/#2 untouched.
+Hosted screen recording PASSED on retake (first take was stopped
+instantly: 110B header-only file, correctly flagged "Needs
+attention" in the UI). Observed OS picker → 9.0s recording →
+preview metadata 1246×800 → POST → 201 in ~7s → byte-exact
+retrieval (1334245/1334245) → all 3 items present after refresh.
+Only log noise: favicon 404 + benign preview-blob aborts.
+
+## November 25, 2026 — uploaded visual evidence and model handoff
+
+Post-submission improvement, separate from the original hackathon work.
+Based on `57090b2` from `step12/deploy-prep`, implemented in an isolated
+checkout on `codex/visual-evidence-pipeline`.
+
+- Spark now receives selected uploaded screenshots/video frames as real
+  image inputs, with stable E-references, marked points, timestamps and
+  reported behavior. Selection is bounded to three images / 12 MiB total;
+  skipped images and stored-only videos are explained explicitly.
+- Selected upload bytes are checked for incident ownership, safe paths,
+  size, SHA-256 and detected content type before model requests. Read
+  reproduction artifacts must match their recorded hashes too.
+- Wonder receives bounded, labeled Spark observations/guesses and SAM
+  geometry. Unknown E-references are removed from supporting citations
+  and recorded as unvalidated; DOM and pinned source remain authoritative
+  for hidden-element and code-location claims.
+- The Diagnosis panel displays actual image inputs and model handoff,
+  including honest defaults for historical records. No historical evidence,
+  approvals, verification reports or repair PRs were rewritten.
+- Fixed the provider-auth test's ambient-token dependency by using its
+  existing test-token fixture. Baseline in this clean checkout was
+  194 passed / 1 failed; final backend suite is 211 passed (16 new cases).
+  The pre-existing test-client deprecation warning remains.
+- Production TypeScript/Vite build passes. Provider responses in regression
+  tests are mocked; no paid model call, Modal job or production deployment
+  was performed for this change.
+- Headless Edge checks on the production build with intercepted API
+  fixtures passed: new and legacy image provenance, omitted video/image
+  labels, missing-control notice, and Wonder handoff. Zero page errors;
+  all app API requests were intercepted, with no live model/backend calls.

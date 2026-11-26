@@ -1,6 +1,31 @@
-import type { Evidence, Incident, IncidentCreatePayload, IncidentSummary } from './types'
+import type {
+  Candidate,
+  CandidateSummary,
+  Evidence,
+  Incident,
+  IncidentCreatePayload,
+  IncidentSummary,
+  Investigation,
+  InvestigationSummary,
+  Publication,
+  PublicationPreview,
+  ReproRun,
+  ReproSummary,
+  Verification,
+  VerificationSummary,
+} from './types'
 
-export const BACKEND_URL = 'http://127.0.0.1:8000'
+// Build-time backend address (`VITE_BUGLENS_API_URL`). Local `vite dev`
+// falls back to the uvicorn default, but a production bundle without the
+// variable fails loudly at load instead of silently calling localhost.
+const configuredUrl = (import.meta.env.VITE_BUGLENS_API_URL as string | undefined)?.trim()
+
+if (import.meta.env.PROD && !configuredUrl) {
+  throw new Error('VITE_BUGLENS_API_URL is not set for this production build')
+}
+
+export const BACKEND_URL =
+  configuredUrl && configuredUrl.length > 0 ? configuredUrl : 'http://127.0.0.1:8000'
 
 const TOKEN_KEY = 'buglens-api-token'
 
@@ -48,7 +73,34 @@ async function parseErrorBody(response: Response): Promise<string> {
   return `HTTP ${response.status}`
 }
 
-async function request<T>(token: string, path: string, init?: RequestInit): Promise<T> {
+type UnauthorizedListener = () => void
+
+const unauthorizedListeners = new Set<UnauthorizedListener>()
+
+/** Fired when a protected call (other than token validation) gets 401/403. */
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener)
+  return () => {
+    unauthorizedListeners.delete(listener)
+  }
+}
+
+function notifyUnauthorized(): void {
+  for (const listener of unauthorizedListeners) {
+    try {
+      listener()
+    } catch {
+      // Listener failures stay local; the ApiError still propagates.
+    }
+  }
+}
+
+async function request<T>(
+  token: string,
+  path: string,
+  init?: RequestInit,
+  opts?: { silentAuth?: boolean },
+): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${BACKEND_URL}${path}`, {
@@ -65,6 +117,9 @@ async function request<T>(token: string, path: string, init?: RequestInit): Prom
     throw new ApiError(0, err instanceof Error ? err.message : 'Network error')
   }
   if (!response.ok) {
+    if (!opts?.silentAuth && (response.status === 401 || response.status === 403)) {
+      notifyUnauthorized()
+    }
     throw new ApiError(response.status, await parseErrorBody(response))
   }
   return (await response.json()) as T
@@ -73,6 +128,11 @@ async function request<T>(token: string, path: string, init?: RequestInit): Prom
 export const api = {
   listIncidents(token: string): Promise<IncidentSummary[]> {
     return request(token, '/api/incidents')
+  },
+
+  /** Authenticate a token against an existing protected endpoint. Never fires the global 401 handler. */
+  validateToken(token: string): Promise<IncidentSummary[]> {
+    return request(token, '/api/incidents', undefined, { silentAuth: true })
   },
 
   getIncident(token: string, id: string): Promise<Incident> {
@@ -91,6 +151,172 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ commit_sha: commitSha }),
     })
+  },
+
+  startReproduction(token: string, incidentId: string): Promise<ReproSummary> {
+    return request(token, `/api/incidents/${incidentId}/reproductions`, { method: 'POST' })
+  },
+
+  listReproductions(token: string, incidentId: string): Promise<ReproSummary[]> {
+    return request(token, `/api/incidents/${incidentId}/reproductions`)
+  },
+
+  getReproduction(token: string, runId: string): Promise<ReproRun> {
+    return request(token, `/api/reproductions/${runId}`)
+  },
+
+  cancelReproduction(token: string, runId: string): Promise<ReproSummary> {
+    return request(token, `/api/reproductions/${runId}/cancel`, { method: 'POST' })
+  },
+
+  async downloadReproArtifact(token: string, runId: string, name: string): Promise<Blob> {
+    let response: Response
+    try {
+      response = await fetch(
+        `${BACKEND_URL}/api/reproductions/${runId}/artifacts/${encodeURIComponent(name)}/download`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+    } catch (err) {
+      throw new ApiError(0, err instanceof Error ? err.message : 'Network error')
+    }
+    if (!response.ok) {
+      throw new ApiError(response.status, await parseErrorBody(response))
+    }
+    return response.blob()
+  },
+
+  startInvestigation(token: string, incidentId: string, runId: string): Promise<InvestigationSummary> {
+    return request(token, `/api/incidents/${incidentId}/investigations`, {
+      method: 'POST',
+      body: JSON.stringify({ run_id: runId }),
+    })
+  },
+
+  listInvestigations(token: string, incidentId: string): Promise<InvestigationSummary[]> {
+    return request(token, `/api/incidents/${incidentId}/investigations`)
+  },
+
+  getInvestigation(token: string, invId: string): Promise<Investigation> {
+    return request(token, `/api/investigations/${invId}`)
+  },
+
+  cancelInvestigation(token: string, invId: string): Promise<InvestigationSummary> {
+    return request(token, `/api/investigations/${invId}/cancel`, { method: 'POST' })
+  },
+
+  startCandidate(
+    token: string,
+    incidentId: string,
+    investigationId: string,
+    hypothesisRank: number,
+  ): Promise<CandidateSummary> {
+    return request(token, `/api/incidents/${incidentId}/candidates`, {
+      method: 'POST',
+      body: JSON.stringify({ investigation_id: investigationId, hypothesis_rank: hypothesisRank }),
+    })
+  },
+
+  listCandidates(token: string, incidentId: string): Promise<CandidateSummary[]> {
+    return request(token, `/api/incidents/${incidentId}/candidates`)
+  },
+
+  getCandidate(token: string, candidateId: string): Promise<Candidate> {
+    return request(token, `/api/candidates/${candidateId}`)
+  },
+
+  approveCandidate(
+    token: string,
+    candidateId: string,
+    diffSha256: string,
+    note: string,
+  ): Promise<CandidateSummary> {
+    return request(token, `/api/candidates/${candidateId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ diff_sha256: diffSha256, note }),
+    })
+  },
+
+  rejectCandidate(token: string, candidateId: string, note: string): Promise<CandidateSummary> {
+    return request(token, `/api/candidates/${candidateId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    })
+  },
+
+  startVerification(token: string, candidateId: string): Promise<VerificationSummary> {
+    return request(token, `/api/candidates/${candidateId}/verifications`, { method: 'POST' })
+  },
+
+  listVerifications(token: string, candidateId: string): Promise<VerificationSummary[]> {
+    return request(token, `/api/candidates/${candidateId}/verifications`)
+  },
+
+  getVerification(token: string, verificationId: string): Promise<Verification> {
+    return request(token, `/api/verifications/${verificationId}`)
+  },
+
+  cancelVerification(token: string, verificationId: string): Promise<VerificationSummary> {
+    return request(token, `/api/verifications/${verificationId}/cancel`, { method: 'POST' })
+  },
+
+  async downloadVerifyArtifact(
+    token: string,
+    verificationId: string,
+    name: string,
+  ): Promise<Blob> {
+    let response: Response
+    try {
+      response = await fetch(
+        `${BACKEND_URL}/api/verifications/${verificationId}/artifacts/${encodeURIComponent(name)}/download`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+    } catch (err) {
+      throw new ApiError(0, err instanceof Error ? err.message : 'Network error')
+    }
+    if (!response.ok) {
+      throw new ApiError(response.status, await parseErrorBody(response))
+    }
+    return response.blob()
+  },
+
+  previewPublication(
+    token: string,
+    candidateId: string,
+    verificationId: string,
+    prTitle: string,
+  ): Promise<PublicationPreview> {
+    return request(token, '/api/publications/preview', {
+      method: 'POST',
+      body: JSON.stringify({
+        candidate_id: candidateId,
+        verification_id: verificationId,
+        pr_title: prTitle,
+      }),
+    })
+  },
+
+  publishRepair(
+    token: string,
+    candidateId: string,
+    verificationId: string,
+    prTitle: string,
+  ): Promise<Publication> {
+    return request(token, '/api/publications', {
+      method: 'POST',
+      body: JSON.stringify({
+        candidate_id: candidateId,
+        verification_id: verificationId,
+        pr_title: prTitle,
+      }),
+    })
+  },
+
+  listPublications(token: string, candidateId: string): Promise<Publication[]> {
+    return request(token, `/api/candidates/${candidateId}/publications`)
+  },
+
+  getPublication(token: string, publicationId: string): Promise<Publication> {
+    return request(token, `/api/publications/${publicationId}`)
   },
 
   async downloadBlob(token: string, incidentId: string, evidenceId: string): Promise<Blob> {
@@ -116,20 +342,31 @@ export function uploadEvidence(
   incidentId: string,
   form: FormData,
   onProgress: (percent: number | null) => void,
+  opts?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<Evidence> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${BACKEND_URL}/api/incidents/${incidentId}/evidence`)
     xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+    // A hung request must surface instead of spinning forever: the server
+    // answers uploads in milliseconds, so a 120s ceiling only trips on real stalls.
+    xhr.timeout = opts?.timeoutMs ?? 120_000
+    const onAbortSignal = () => xhr.abort()
+    opts?.signal?.addEventListener('abort', onAbortSignal, { once: true })
+    const settle = (fn: () => void) => {
+      opts?.signal?.removeEventListener('abort', onAbortSignal)
+      fn()
+    }
     xhr.upload.onprogress = (event) => {
       onProgress(event.lengthComputable ? Math.round((event.loaded / event.total) * 100) : null)
     }
     xhr.onload = () => {
       if (xhr.status === 201) {
         try {
-          resolve(JSON.parse(xhr.responseText) as Evidence)
+          const evidence = JSON.parse(xhr.responseText) as Evidence
+          settle(() => resolve(evidence))
         } catch {
-          reject(new ApiError(xhr.status, 'Upload succeeded but the response was unreadable.'))
+          settle(() => reject(new ApiError(xhr.status, 'Upload succeeded but the response was unreadable.')))
         }
         return
       }
@@ -140,10 +377,13 @@ export function uploadEvidence(
       } catch {
         // keep the generic message
       }
-      reject(new ApiError(xhr.status, message))
+      if (xhr.status === 401 || xhr.status === 403) notifyUnauthorized()
+      settle(() => reject(new ApiError(xhr.status, message)))
     }
-    xhr.onerror = () => reject(new ApiError(0, 'Network error during upload.'))
-    xhr.onabort = () => reject(new ApiError(0, 'Upload cancelled.'))
+    xhr.onerror = () => settle(() => reject(new ApiError(0, 'Network error during upload.')))
+    xhr.ontimeout = () =>
+      settle(() => reject(new ApiError(0, 'Upload timed out waiting for the server.')))
+    xhr.onabort = () => settle(() => reject(new ApiError(0, 'Upload cancelled.')))
     onProgress(0)
     xhr.send(form)
   })

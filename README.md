@@ -7,6 +7,16 @@ and creates a GitHub PR only after verification passes.
 
 Built for the Meta hackathon.
 
+**Links:** live website
+<https://frontend-jade-rho-52.vercel.app> ·
+submission walkthrough
+[SUBMISSION.md](SUBMISSION.md) ·
+current implementation branch
+<https://github.com/WANAONTOP/Buglens/tree/step12/deploy-prep>.
+Review that branch, not `main`: `main` remains the pinned
+evaluation baseline (`9174a46…`), while all application work
+continues on `step12/deploy-prep`.
+
 ## Prerequisites
 
 - Node.js + npm
@@ -42,7 +52,8 @@ python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
 The backend loads `.env` on startup. The frontend asks for the same token in
-the "API token" card and keeps it in that tab's session storage only.
+the "Connect to workspace" dialog (auto-opened when signed out) and keeps it
+in that tab's session storage only; Settings holds sign-out and diagnostics.
 
 ## Start the backend
 
@@ -187,6 +198,335 @@ commands will run only inside the Modal sandbox). The fixture runner is
 separate from the BugLens app test suite: `pytest backend\tests` must stay
 green regardless of the fixture's expected failure.
 
+## Modal reproduction (Step 5)
+
+Target: `WANAONTOP/Buglens`, branch `main`, app `fixtures/storefront/`,
+manifest repo-root `.buglens.json`. Starting a reproduction resolves `main`
+to its immutable commit SHA via GitHub, pins the SHA on the incident,
+validates + freezes the contract (hash stored on the run), then executes it
+as a background job inside a Modal sandbox (Linux Playwright Chromium —
+never msedge/Windows paths). One run at a time; extra starts get HTTP 429.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/incidents/{id}/reproductions` | Freeze + start (202); pins SHA |
+| GET | `/api/incidents/{id}/reproductions` | List runs for an incident |
+| GET | `/api/reproductions/{run_id}` | Run state, verdict, events, artifacts |
+| POST | `/api/reproductions/{run_id}/cancel` | Request cancellation |
+| GET | `/api/reproductions/{run_id}/artifacts` | List fetched artifacts |
+| GET | `/api/reproductions/{run_id}/artifacts/{name}/download` | Download one artifact |
+
+Verdicts are evaluation-only: `REPRODUCED` (blocked click observed +
+control confirmed), `NEEDS_REPRODUCTION` (failure not established), or
+`BLOCKED` (setup/browser/evidence unavailable). No status claims the bug is
+verified or fixed. Credentials never enter the sandbox; the incident detail
+page shows runs, live status, events, and artifact downloads.
+
+Status: complete — backend suite passes (105) and the first live Modal
+run returned `REPRODUCED` at the published SHA (see NEW_WORK.md).
+
+## Investigation (Step 6, read-only — no patches)
+
+An investigation runs on a `done` / `REPRODUCED` reproduction whose SHA
+matches the incident pin and whose artifacts are complete; anything else
+is reported BLOCKED. It builds a stable evidence package (E-numbers over
+uploaded, baseline, broken-route, and control-route items), calls
+`muse-spark-1.3` on the broken/control frames and selected uploaded images, segments the concrete Pay
+button with `sam-3.1` (the transparent overlay is established by DOM and
+hit-testing, never by vision), maps DOM identities to source at the
+pinned commit (exact / inferred / unknown), and asks `muse-wonder-1.0`
+for ranked root-cause hypotheses with evidence refs and validated
+citations. One background job at a time; results persist across
+refresh/restart and appear in the incident detail page.
+
+### Uploaded image analysis (November 25 improvement)
+
+New investigations attach up to three uploaded screenshots or captured
+video frames to Spark, in upload order, with a combined 12 MiB upload
+budget and the existing 10 MiB per-image limit. Selected images must
+match their stored size, SHA-256, content type, and incident ownership;
+missing or changed bytes block the investigation before provider calls.
+Read reproduction artifacts are also hash-checked. Files beyond the
+budget stay in the evidence package with an explicit omission note.
+Whole videos are not sent to the image model: capture and upload a frame
+from the preview to include it in analysis.
+
+Spark receives the actual attached-image references, original click-point
+coordinates, video-frame timestamps, and the developer's reported behavior.
+It is asked to compare uploads with reproduced images and report mismatches.
+Wonder now receives bounded Spark observations and causal guesses plus SAM
+geometry, alongside DOM evidence and pinned source. Model interpretations
+remain fallible; they do not replace reproduction or verification gates.
+Unknown evidence citations are flagged instead of accepted as supporting refs.
+
+The Diagnosis panel distinguishes images sent to Spark, stored-only videos,
+and omitted images, and shows the visual context passed to Wonder. Sending
+an image does not guarantee that a model cites it or diagnoses it correctly.
+Older records retain their original inputs and results; defaults keep them
+readable and do not claim that historical uploads were analyzed.
+
+Validation for this improvement uses mocked provider HTTP and local browser
+checks. It has not been rerun with paid models or deployed; the historical
+hosted demo below remains evidence of the earlier implementation.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/incidents/{id}/investigations` | Start on a run (202; body `{"run_id"}`) |
+| GET | `/api/incidents/{id}/investigations` | List investigations for an incident |
+| GET | `/api/investigations/{inv_id}` | Full record: evidence, models, mappings |
+| POST | `/api/investigations/{inv_id}/cancel` | Request cancellation |
+
+Live result on run `ae35c096…`: Spark observed the enabled button with no
+visible cover; SAM boxed the button at (360,189)-(465,233), matching the
+DOM rect; `div#promo-overlay` mapped exact to
+`fixtures/storefront/public/checkout.html:36`; Wonder's top hypothesis
+names the transparent full-viewport interceptor with 11 supporting
+evidence refs and zero unvalidated citations. No status claims PATCHED,
+FIXED, or VERIFIED.
+
+## Candidate patches (Step 7 — generation + review, no verification)
+
+A candidate is generated from a completed, parsed investigation: the
+incident/run/investigation chain must agree on the SHA and contract,
+sources are fetched at the pinned commit, and `muse-wonder-1.0` returns
+one minimal unified diff with explanations, evidence refs, expected
+effect, and regression risks. Every diff is validated structurally
+against the pinned baseline (canonical paths, manifest scope, protected
+exclusions, no renames/deletes/mode/binary changes, size bounds, strict
+in-memory apply) before it can be proposed. A proposed patch is not a
+verified fix. At most three candidates per incident.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/incidents/{id}/candidates` | Generate (202; body `{"investigation_id", "hypothesis_rank?"}`) |
+| GET | `/api/incidents/{id}/candidates` | List candidates for an incident |
+| GET | `/api/candidates/{candidate_id}` | Full record: diff, validation, provenance |
+| POST | `/api/candidates/{candidate_id}/approve` | Approve, bound to the exact diff hash |
+| POST | `/api/candidates/{candidate_id}/reject` | Reject with a reason |
+| POST | `/api/candidates/{candidate_id}/cancel` | Cancel a running generation |
+
+States are `PROPOSED`, `APPROVED`, `REJECTED`, or `BLOCKED`. Approval
+binds the candidate ID to the diff SHA-256 and re-verifies the binding;
+any change to the diff invalidates it. Approval authorizes a later
+verification run; it is not verification.
+
+Live result on investigation `bbe7be7e…`: candidate `ecd72616…`
+`PROPOSED` — one file, `fixtures/storefront/public/checkout.html`,
+adding `style="pointer-events: none;"` to the overlay div so clicks
+reach the Pay button; 6 evidence refs, all 5 validation checks pass.
+Developer approval is pending.
+
+## Seven-gate verification (Step 8 — no PR publication)
+
+Verification runs only on a validly approved candidate: the worker
+re-checks state, approval record, diff hash, baseline pin, and contract
+agreement, and refuses stale or changed content. Each run freezes a
+hashed policy (viewport, pixel tolerances, required elements, expected
+confirmation, Gate 4 suite command), then drives the frozen reproduction
+on baseline and candidate checkouts in fresh node sandboxes and the
+pinned repo suite on both checkouts in fresh python sandboxes — four
+sandboxes, no credentials inside, working tree untouched. All seven
+gates must PASS for a `VERIFIED` outcome (limited to the tested scope);
+results persist with screenshots, traces, logs, and tested code hashes.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/candidates/{id}/verifications` | Start (202; approved only) |
+| GET | `/api/candidates/{id}/verifications` | List runs for a candidate |
+| GET | `/api/verifications/{vid}` | Full record: gates, outcome, provenance |
+| POST | `/api/verifications/{vid}/cancel` | Request cancellation |
+| GET | `/api/verifications/{vid}/artifacts/{name}/download` | Download evidence |
+
+The seven gates: reproduction, target correctness, layout/interaction,
+repo tests (same pinned suite both checkouts, no new failures),
+runtime errors, protected UI (before-click render unchanged — correct
+for an invisible repair), scope/integrity (tested bytes equal the
+approved diff). Status: live verification `1acefb6a…` of approved candidate
+`ecd72616…` returned `VERIFIED` — all seven gates passed on fresh
+Modal sandboxes (see NEW_WORK.md). No PR publication in this milestone.
+
+## Verified PR publication (Step 9 — explicit Publish only, never auto-merge)
+
+The publisher files a GitHub PR for a completed live `VERIFIED` run
+and nothing else. Before any write it re-runs a server-side preflight
+entirely from stored records plus live GitHub reads: completed live
+verification with 7/7 PASS over verified artifact bytes and four
+sandbox-terminated markers, valid approval binding, candidate /
+baseline / contract / policy / tested-byte / diff-hash agreement,
+approved repository, not superseded or cancelled, recomputed change
+bytes equal to the tested bytes, remote base branch still at the
+verified baseline, and repair-branch state. A moved base stops
+publication rather than transplanting the verification.
+
+The repair commit is built from the pinned baseline plus the exact
+recomputed bytes (`buglens/fix-<candidate8>`); publish verifies an
+existing branch before reuse (same commit, or an equivalent commit
+with identical tree/parent/message) and never force-pushes. Publication
+is idempotent per candidate + verification, serialized to one worker,
+and orphaned intents recover from live GitHub state. The PR body is a
+sanitized evidence summary (baseline, verification ID, seven gates,
+suite counts, viewport, limitations, fixture notice) with no
+credentials, traces, or localhost links — and no GitHub CI claim.
+
+| Method | Path | Purpose |
+| ------ | ---- | ------- |
+| POST | `/api/publications/preview` | Read-only preview + full preflight (body `{"candidate_id", "verification_id", "pr_title?"}`) |
+| POST | `/api/publications` | Publish the exact preview (explicit Publish; 201; 409 on refusal) |
+| GET | `/api/candidates/{id}/publications` | List publication records |
+| GET | `/api/publications/{pid}` | Full record: real PR URL only after GitHub confirms |
+
+In the UI, open the candidate, pick the verified run, and choose
+"Load preview & preflight". "Publish this exact preview to GitHub"
+stays disabled until every server check passes, and asks for
+confirmation before writing. Status: authorized single PR created
+and read-back verified — PR #1,
+https://github.com/WANAONTOP/Buglens/pull/1
+("Fix checkout overlay intercepting Pay now clicks"), head
+`b59b1d7d…` on `buglens/fix-ecd72616`, exactly the tested one-line
+change; open and unmerged, merge left to a human. This is an owned
+evaluation-fixture repair verified within the tested scope; checks
+ran in Modal, not GitHub CI (see NEW_WORK.md).
+
+## Hackathon submission
+
+Start here: [SUBMISSION.md](SUBMISSION.md) — live links, demo
+walkthrough, architecture, event-vs-foundation scope, and honest
+limitations. The submitted source is branch `step12/deploy-prep`,
+not `main`.
+
+## Modal deployment (Steps 12-13 — LIVE single-developer demo)
+
+The backend is deployed to Modal and the production frontend is
+hosted on Vercel (bounded live smoke below). This remains a single-developer authenticated demo: one shared
+`BUGLENS_API_TOKEN` (typed in by the user, kept in tab session
+storage, never in the bundle), one API container, CORS pinned to the
+exact production origin (no wildcard). Local uvicorn
+development is unchanged and remains the default; deploy behavior
+activates only when `BUGLENS_MODAL=1` and `BUGLENS_JOBS=modal` are
+both set (the Modal app sets both remotely).
+
+Live backend URL (public endpoint; `/api/*` still requires the
+Bearer token):
+
+```text
+https://gbishwakarma18--buglens-ai-api.us-east.modal.run
+```
+
+Live website (Step 13):
+
+```text
+https://frontend-jade-rho-52.vercel.app
+```
+
+Sign-in: open the website — the "Connect to workspace" dialog opens
+automatically when signed out. Paste the `BUGLENS_API_TOKEN` value
+from your local `.env` into "Access token" and choose "Connect". The
+token is validated against the backend and kept only in that tab's
+session storage; Settings holds sign-out, token change, and backend
+diagnostics. Invalid tokens reopen the dialog. Never put tokens in
+`VITE_*` variables.
+
+The production bundle sets `VITE_BUGLENS_API_URL` to the backend
+URL at build time and refuses to load without it (no localhost
+fallback in production). Hosted browser checks (15/15 scripted,
+headless Edge): load, refresh, sign-in, remote smoke incident +
+`REPRODUCED` run + artifacts, deep-link survival, screenshot upload
+with byte-identical retrieval, real browser-encoded WebM upload
+with preview and frame capture, logout gating. Real Record Screen
+interaction (OS picker → Stop → playback → marking) still needs a
+headed browser + human and is pending; only cosmetic issue found is
+a missing `/favicon.ico` (404). Remote Meta/Baseten credentials are
+not configured: `/api/providers/status` reports `not_configured`
+with setup guidance and no secret values; no model, verification,
+or publication calls ran in this step.
+
+UI redeploy (commit `e921b9d`, Vercel deployment
+`frontend-6s29z15t6`, same production hostname): redesigned
+Reports/Investigation workspace with per-item upload states
+(Preparing → Ready → Uploading → Uploaded/failed), upload timeout +
+cancel, finalize indicator, wizard double-save guard. Deployed via a
+fresh remote build with `--build-env VITE_BUGLENS_API_URL=<modal
+backend>` (no project env changes; `vercel build` is unusable on this
+machine — EPERM symlinking its builder cache). Live bundle verified:
+Modal URL baked, zero secret values/names. Hosted checks passed:
+sign-in incl. wrong-token 401 handling, existing Step 14 demo (7/7
+gates, PR #2 link), one "Hosted UI test" incident with screenshot
+upload + refresh persistence, desktop/mobile overflow, settings,
+navigation. No paid jobs, approvals, PRs, or backend redeploy.
+Screen-recording acceptance passed locally and on hosted (observed
+9.0s take → 201 → byte-exact retrieval → refresh persistence; an
+earlier instant-stop take produced a 110B file the UI correctly
+flags as needing attention).
+
+What exists: `backend/modal_app.py` (Modal App `buglens-ai`: one
+`max_containers=1` ASGI function plus `run_repro_worker`,
+`run_investigate_worker`, `run_candidate_worker`,
+`run_verify_worker`, all sharing Volume `buglens-data` at `/data`
+and Secret `buglens-secrets`); `backend/app/deploy.py` (flags,
+volume sync, remote spawn/cancel, capacity counts, incidents-registry
+optimistic-concurrency guard → HTTP 409); `backend/app/workers.py`
+(guarded remote entry points, crash marking, no auto-retry);
+per-request volume reload/commit middleware; `worker_call_id` on job
+records; `BUGLENS_CORS_ORIGINS` allowlist; frontend
+`VITE_BUGLENS_API_URL` (see `frontend/.env.example`).
+
+The shared Volume is not a transactional database. Write safety
+comes from ownership and lifecycle ordering (Step 12 review): the
+API runs as a single container so its in-process locks serialize
+API-side writes; `incidents.json` is API-write-only (workers only
+read it; the 409 OCC guard stays as a tripwire); each job record is
+phase-owned (API while queued, the one spawned worker while active,
+terminal states immutable); the worker writes nothing until the
+API's spawn commit is visible; cancel kills (with container
+termination) and confirms death before marking; the stale reconcile
+marks a record lost only when its worker call is confirmed finished
+or was never recorded. Shared-token `BUGLENS_API_TOKEN` auth is a
+single-developer demo limitation. Sandboxes still receive no
+credentials.
+
+Modal Secret `buglens-secrets` holds exactly these names (values
+never in the repo, logs, or images): `BUGLENS_API_TOKEN`,
+`GITHUB_TOKEN`, `GITHUB_REPO`, `MODAL_TOKEN_ID`,
+`MODAL_TOKEN_SECRET`, `BUGLENS_CORS_ORIGINS` (exactly
+`https://frontend-jade-rho-52.vercel.app`, no wildcard).
+`META_API_KEY` and `BASETEN_API_KEY` are present locally but were
+deliberately left out of the secret — model workers are unverified
+remotely, and no model call has run against the deployment.
+
+Exact PowerShell deployment commands (Modal SDK 1.6.3, from the repo
+root, using the project environment). Create `.env.modal` (gitignored
+via `.env.*`) holding the secret names above, then delete it after:
+
+```powershell
+.venv\Scripts\modal.exe volume create buglens-data
+.venv\Scripts\modal.exe secret create buglens-secrets --from-dotenv .env.modal
+Remove-Item .env.modal
+.venv\Scripts\modal.exe deploy backend/modal_app.py
+```
+
+Then point a hosted frontend at the deployed API URL with
+`VITE_BUGLENS_API_URL` (no trailing slash) and rebuild.
+
+Bounded live smoke procedure (Step 12 — RAN, all passed):
+1. `GET /health` on the deployed URL returns ok.
+2. Missing/wrong auth rejected (401); preflight echoes the allowed
+   origin and not an evil one.
+3. Create an incident (authenticated), upload a small screenshot,
+   confirm the recorded hash matches the bytes.
+4. Start one reproduction (202 in seconds); an immediate duplicate
+   POST is rejected (429) with no second worker.
+5. Poll to terminal; download one artifact and verify its hash.
+6. Redeploy the API (new container); confirm the incident, evidence,
+   completed worker results, and byte-identical artifacts persist.
+
+Remaining blockers: remote investigate/candidate/verify workers
+and GitHub publication from the deployment are unverified (one
+reproduction only, no model calls yet); 30-minute verifications vs
+the 2400s worker timeout need a live run; multi-replica API would
+break in-process locks (held at `max_containers=1` by design); real
+Record Screen interaction is pending-manual; `/favicon.ico` 404s
+(cosmetic).
+
 ## Configuration
 
 `.env` holds local secrets (see `.env.example`). Never commit it.
@@ -194,8 +534,12 @@ green regardless of the fixture's expected failure.
 ## Project layout
 
 - `frontend/src/` — React + TypeScript + Vite app (incident form, evidence
-  capture, screen recorder).
+  capture, screen recorder, Modal reproduction panel).
 - `backend/app/` — FastAPI service (`/health`, `/api/*`).
+- `backend/app/repro/` — published-source resolution, contract freeze,
+  Modal runner, background jobs, run store.
+- `backend/modal_app.py` — Modal deployment entry (ASGI + 4 workers;
+  local dev stays on uvicorn).
 - `backend/tests/` — backend test suite.
 - `AGENTS.md` — binding engineering rules.
 - `PLAN.md` — milestones and acceptance checks.
